@@ -45,7 +45,7 @@ class AShmovinCharacter : public ACharacter
 	UInputAction* LookAction;
 
 public:
-	AShmovinCharacter();
+	AShmovinCharacter(const FObjectInitializer& ObjectInitializer);
 	
 
 protected:
