@@ -32,14 +32,10 @@ bool UShmovementComponent::CanGainWallTraction(const FHitResult& Hit) const
 		return false;
 	}
 
-	// Calculate the angle between the wall normal and the up vector
 	const float WallAngle = FMath::RadiansToDegrees(
 		FMath::Acos(FVector::DotProduct(Hit.ImpactNormal, FVector::UpVector)));
-
-	// Convert to a signed angle where positive is above horizontal and negative is below
 	const float SignedWallAngle = 90.0f - WallAngle;
-
-	// Check if the wall angle is within our valid range
+	
 	return SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle;
 }
 
