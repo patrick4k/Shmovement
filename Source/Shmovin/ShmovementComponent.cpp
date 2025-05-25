@@ -8,16 +8,40 @@
 
 #include "Kismet/KismetSystemLibrary.h"
 
+#include "ShmovinCommon.h" 
+
 void UShmovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
 	CharacterOwner->GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &UShmovementComponent::OnCapsuleHit);
+}
+
+void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
+{
+	Super::PhysCustom(deltaTime, Iterations);
 	
+	switch (CustomMovementMode)
+	{
+	case CMOVE_Walltraction:
+		PhysWallTraction(deltaTime, Iterations);
+		break;
+	default:
+		break;
+	}
+}
+
+void UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
+{
+	if (!bWallTractionInitiated || deltaTime < MIN_TICK_TIME)
+	{
+		return;
+	}
+	
+	ShmovinCommon::DEBUG_LOG(TEXT("Wall Traction Physics Running!"));
 }
 
 void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+                                        UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	if (CanGainWallTraction(Hit))
 	{
@@ -41,12 +65,10 @@ bool UShmovementComponent::CanGainWallTraction(const FHitResult& Hit) const
 
 void UShmovementComponent::InitWallTraction(const FVector& WallNormal)
 {
+	bWallTractionInitiated = false;
+	
 	SetMovementMode(MOVE_Custom, CMOVE_Walltraction);
-	RotateToWallNormal(WallNormal);
-}
 
-void UShmovementComponent::RotateToWallNormal(const FVector& WallNormal)
-{
 	// Calculate rotation
 	const double RightProjWallNormal = FVector::DotProduct(CharacterOwner->GetActorRightVector(), WallNormal);
 	const auto WallSide = RightProjWallNormal > 0.0 ? EWallSide::Right : EWallSide::Left;
@@ -69,3 +91,8 @@ void UShmovementComponent::RotateToWallNormal(const FVector& WallNormal)
 	);
 }
 
+void UShmovementComponent::OnWallRunInitComplete()
+{
+	ShmovinCommon::DEBUG_LOG(TEXT("Wall Traction Initiated"));
+	bWallTractionInitiated = true;
+}

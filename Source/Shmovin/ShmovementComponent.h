@@ -4,11 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "ShmovementComponent.generated.h"
+#include "ShmovementComponent.generated.h" 
 
 UENUM(BlueprintType)
-enum EShmovementModes : uint8
+enum EShmovementModes : int
 {
+	CMOVE_None UMETA(DisplayName = "None"),
 	CMOVE_Walltraction UMETA(DisplayName = "Wall Jump"),
 	CMOVE_MAX UMETA(Hidden)
 };
@@ -36,14 +37,27 @@ protected: // PROPERTIES
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float MinWallTractionAngle = -15.f;
 
-public: // FUNCTIONS
-	void BeginPlay() override;
+private:
+	bool bWallTractionInitiated = false;
+	EShmovementModes CurrentShmovementMode = EShmovementModes::CMOVE_None;
 
+public: // FUNCTIONS
 	UFUNCTION()
 	void OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 	bool CanGainWallTraction(const FHitResult& Hit) const;
 
 	void InitWallTraction(const FVector& WallNormal);
-	void RotateToWallNormal(const FVector& WallNormal);
+
+	UFUNCTION()
+	void OnWallRunInitComplete();
+
+public: // OVERRIDES
+	void BeginPlay() override;
+
+	void PhysCustom(float deltaTime, int32 Iterations) override;
+
+protected: // UTILITY FUNCTIONS
+	virtual void PhysWallTraction(float deltaTime, int32 Iterations);
+	
 };
