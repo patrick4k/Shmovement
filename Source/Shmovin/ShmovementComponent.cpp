@@ -39,9 +39,10 @@ void UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
     }
 	
     const float WallAngle = FMath::RadiansToDegrees(
-        FMath::Acos(FVector::DotProduct(CharacterOwner->GetCapsuleComponent()->GetUpVector(), FVector::UpVector)));
+        FMath::Acos(FVector::DotProduct(CharacterOwner->GetCapsuleComponent()->GetUpVector(),
+        	-CharacterOwner->GetGravityDirection())));
 
-	SHMOVIN_DEBUG_FMT("Wall Angle: %f", WallAngle);
+	// SHMOVIN_DEBUG_FMT("Wall Angle: %f", WallAngle);
 
 	// TODO: Compute sliding physics based on wall angle
 	
@@ -93,6 +94,7 @@ void UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
                                         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+	// TODO: On hit, update a cache of data, including the hit result, and the wall angle. Maybe UpdateWallCache(Hit) and return false if CanGainWallTraction(Hit) is false.
 	if (CanGainWallTraction(Hit))
 	{
 		InitWallTraction(Hit.ImpactNormal);
@@ -110,6 +112,8 @@ bool UShmovementComponent::CanGainWallTraction(const FHitResult& Hit) const
 	const float WallAngle = FMath::RadiansToDegrees(
 		FMath::Acos(FVector::DotProduct(Hit.ImpactNormal, FVector::UpVector)));
 	const float SignedWallAngle = 90.0f - WallAngle;
+	SHMOVIN_DEBUG_FMT("Wall Angle: %f", WallAngle);
+	SHMOVIN_DEBUG_FMT("Signed Wall Angle: %f", SignedWallAngle);
 	
 	return SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle;
 }
