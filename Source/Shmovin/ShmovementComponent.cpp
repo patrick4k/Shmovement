@@ -3,6 +3,7 @@
 
 #include "ShmovementComponent.h"
 
+#include <format>
 #include <GameFramework/Character.h>
 #include <Components/CapsuleComponent.h>
 
@@ -32,12 +33,61 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 
 void UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 {
-	if (!bWallTractionInitiated || deltaTime < MIN_TICK_TIME)
-	{
-		return;
-	}
+	if (deltaTime < MIN_TICK_TIME)
+    {
+        return;
+    }
 	
-	ShmovinCommon::DEBUG_LOG(TEXT("Wall Traction Physics Running!"));
+    const float WallAngle = FMath::RadiansToDegrees(
+        FMath::Acos(FVector::DotProduct(CharacterOwner->GetCapsuleComponent()->GetUpVector(), FVector::UpVector)));
+
+	SHMOVIN_DEBUG_FMT("Wall Angle: %f", WallAngle);
+
+	// TODO: Compute sliding physics based on wall angle
+	
+    // const float SlideFactor = FMath::GetMappedRangeValueClamped(
+    //     FVector2D(0.0f, 90.0f),
+    //     FVector2D(0.1f, 1.0f),
+    //     WallAngle
+    // );
+    //
+    // // Apply gravity-based sliding
+    // FVector GravityDir = FVector::DownVector;
+    // const FVector WallRight = FVector::CrossProduct(UpdatedComponent->GetUpVector(), -GravityDir).GetSafeNormal();
+    // const FVector WallDown = FVector::CrossProduct(WallRight, UpdatedComponent->GetUpVector()).GetSafeNormal();
+    //
+    // // Calculate sliding velocity
+    // FVector SlideVelocity = WallDown * GetGravityZ() * SlideFactor * deltaTime;
+    //
+    // // Preserve horizontal momentum when initially attaching to wall
+    // if (!bWallTractionInitiated)
+    // {
+    //     // Project current velocity onto the wall plane
+    //     const FVector WallNormal = UpdatedComponent->GetUpVector();
+    //     const FVector VelocityOnWall = FVector::VectorPlaneProject(Velocity, WallNormal);
+    //     
+    //     // Blend between current velocity and slide velocity
+    //     const float MomentumRetention = 0.8f; // Adjust this value to control how much momentum is preserved
+    //     Velocity = VelocityOnWall * MomentumRetention + SlideVelocity;
+    //     
+    //     bWallTractionInitiated = true;
+    // }
+    // else
+    // {
+    //     // Regular wall sliding
+    //     Velocity = SlideVelocity;
+    // }
+    //
+    // // Apply movement
+    // FVector Adjusted = Velocity * deltaTime;
+    // SafeMoveUpdatedComponent(Adjusted, UpdatedComponent->GetComponentQuat(), true, PrevHit);
+    //
+    // // Handle collision during movement
+    // if (PrevHit.Time < 1.f)
+    // {
+    //     HandleImpact(PrevHit, deltaTime, Adjusted);
+    //     SlideAlongSurface(Adjusted, (1.f - PrevHit.Time), PrevHit.Normal, PrevHit, true);
+    // }
 }
 
 void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
@@ -47,6 +97,7 @@ void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActo
 	{
 		InitWallTraction(Hit.ImpactNormal);
 	}
+	PrevHit = Hit;
 }
 
 bool UShmovementComponent::CanGainWallTraction(const FHitResult& Hit) const
@@ -93,6 +144,6 @@ void UShmovementComponent::InitWallTraction(const FVector& WallNormal)
 
 void UShmovementComponent::OnWallRunInitComplete()
 {
-	ShmovinCommon::DEBUG_LOG(TEXT("Wall Traction Initiated"));
+	SHMOVIN_DEBUG_LOG("Wall Traction Initiated");
 	bWallTractionInitiated = true;
 }
