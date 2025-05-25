@@ -7,9 +7,10 @@
 #include "ShmovementComponent.generated.h"
 
 UENUM(BlueprintType)
-enum EShmovementModes : int
+enum EShmovementModes : uint8
 {
-	CMOVE_WallJump UMETA(DisplayName = "Wall Jump"),
+	CMOVE_Walltraction UMETA(DisplayName = "Wall Jump"),
+	CMOVE_MAX UMETA(Hidden)
 };
 
 UENUM(BlueprintType)
@@ -17,7 +18,7 @@ enum class EWallSide : uint8
 {
 	Left UMETA(DisplayName = "Left Side"),
 	Right UMETA(DisplayName = "Right Side"),
-	MAX UMETA(Hidden),
+	MAX UMETA(Hidden)
 };
 
 UCLASS()
@@ -25,18 +26,28 @@ class SHMOVIN_API UShmovementComponent : public UCharacterMovementComponent
 {
 	GENERATED_BODY()
 
-public:
+protected:
 	// PROPERTIES
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float WallRotationDuration = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float MaxWallTractionAngle = 45.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float MinWallTractionAngle = -15.f;
+
+public:
 	
+	// FUNCTIONS
 	void BeginPlay() override;
 
 	UFUNCTION()
 	void OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
-	bool CanWallJump() const;
+	bool CanGainWallTraction() const;
 
-	void InitWallJump(FVector WallNormal);
+	void InitWallTraction(const FVector& WallNormal);
+	void RotateToWallNormal(const FVector& WallNormal);
 	FRotator CalcWallRunRotation(const FVector& WallNormal) const;
 };
