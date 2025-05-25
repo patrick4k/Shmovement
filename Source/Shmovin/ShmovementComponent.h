@@ -26,8 +26,7 @@ class SHMOVIN_API UShmovementComponent : public UCharacterMovementComponent
 {
 	GENERATED_BODY()
 
-protected:
-	// PROPERTIES
+protected: // PROPERTIES
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float WallRotationDuration = 0.2f;
 
@@ -37,17 +36,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float MinWallTractionAngle = -15.f;
 
-public:
-	
-	// FUNCTIONS
+public: // FUNCTIONS
 	void BeginPlay() override;
 
 	UFUNCTION()
 	void OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
-	bool CanGainWallTraction() const;
+	bool CanGainWallTraction(const FHitResult& Hit) const;
 
 	void InitWallTraction(const FVector& WallNormal);
 	void RotateToWallNormal(const FVector& WallNormal);
-	FRotator CalcWallRunRotation(const FVector& WallNormal) const;
 };
