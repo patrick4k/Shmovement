@@ -22,3 +22,5 @@ public:
 #define SHMOVIN_DEBUG_LOG(format) ::ShmovinCommon::DEBUG_LOG(TEXT(format))
 
 #define SHMOVIN_DEBUG_FMT(format, ...) ::ShmovinCommon::DEBUG_LOG(FString::Printf(TEXT(format), __VA_ARGS__))
+
+#define SHMOVIN_DEBUG_VEC(vec) ::ShmovinCommon::DEBUG_LOG(FString::Printf(TEXT(#vec) TEXT(" = (%f, %f, %f)"), vec.X, vec.Y, vec.Z))

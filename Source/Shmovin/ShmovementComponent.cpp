@@ -3,6 +3,7 @@
 
 #include "ShmovementComponent.h"
 
+#include <cassert>
 #include <format>
 #include <GameFramework/Character.h>
 #include <Components/CapsuleComponent.h>
@@ -19,8 +20,6 @@ void UShmovementComponent::BeginPlay()
 
 void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 {
-	Super::PhysCustom(deltaTime, Iterations);
-	
 	switch (CustomMovementMode)
 	{
 	case CMOVE_Walltraction:
@@ -29,6 +28,9 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 	default:
 		break;
 	}
+
+	Super::PhysCustom(deltaTime, Iterations);
+	
 }
 
 void UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
@@ -37,97 +39,167 @@ void UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
     {
         return;
     }
+
+	if (!WallHitData.has_value() || !WallHitData->Hit.bBlockingHit)
+	{
+		return;
+	}
 	
-    const float WallAngle = FMath::RadiansToDegrees(
-        FMath::Acos(FVector::DotProduct(CharacterOwner->GetCapsuleComponent()->GetUpVector(),
-        	-CharacterOwner->GetGravityDirection())));
-
-	// SHMOVIN_DEBUG_FMT("Wall Angle: %f", WallAngle);
-
 	// TODO: Compute sliding physics based on wall angle
+	if (deltaTime < MIN_TICK_TIME)
+	{
+		return;
+	}
+
+	if (!WallHitData.has_value())
+	{
+		SHMOVIN_DEBUG_LOG("Wall Hit Data is not valid");
+		return;
+	}
+
+	if (!IsWallTractionValid())
+	{
+		SHMOVIN_DEBUG_LOG("Wall Traction is not valid");
+		SetMovementMode(MOVE_Falling);
+		return;
+	}
+
+	// Get the wall normal and gravity direction
+	const FVector WallNormal = WallHitData->Hit.ImpactNormal;
+	const FVector GravDir = GravityDirection();
+
+	// Calculate gravity force along the wall
+	const float GravityStrength = -GetGravityZ(); // Convert to positive value
+	FVector GravityForce = GravDir * GravityStrength;
+	FVector GravityAlongWall = GravityForce - (FVector::DotProduct(GravityForce, WallNormal) * WallNormal);
+	GravityAlongWall *= WallSlidingGravityScale;
+
+	// Calculate friction force
+	// Project current velocity onto the wall plane
+	FVector VelocityAlongWall = Velocity - (FVector::DotProduct(Velocity, WallNormal) * WallNormal);
+	const float VelocityMagnitude = VelocityAlongWall.Size();
+    
+	// Only apply friction if we're moving
+	FVector FrictionForce = FVector::ZeroVector;
+	if (!FMath::IsNearlyZero(VelocityMagnitude))
+	{
+		// Friction opposes motion
+		FVector VelocityDirection = VelocityAlongWall.GetSafeNormal();
+		// Scale friction by normal force (gravity component perpendicular to wall)
+		float NormalForce = FMath::Abs(FVector::DotProduct(GravityForce, WallNormal));
+		FrictionForce = -VelocityDirection * (NormalForce * WallSlidingFrictionCoefficient);
+	}
+
+	// Apply the combined forces
+	auto NetForce = GravityAlongWall + FrictionForce;
+	SHMOVIN_DEBUG_VEC(GravityAlongWall);
+	SHMOVIN_DEBUG_VEC(FrictionForce);
+	SHMOVIN_DEBUG_VEC(NetForce);
+
+	// Convert forces to acceleration (F = ma, so a = F/m)
+	FVector NetAcceleration = (NetForce) / Mass;
+
+	// Apply the acceleration
+	Velocity += NetAcceleration * deltaTime;
+    
+	// Perform movement using the updated velocity
+	FVector Delta = Velocity * deltaTime;
+	FHitResult Hit;
+	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
+
+	// Handle collision by sliding along the surface
+	if (Hit.bBlockingHit)
+	{
+		SlideAlongSurface(Delta, 1.f - Hit.Time, Hit.Normal, Hit, true);
+	}
+}
+
+bool UShmovementComponent::IsWallTractionValid() const
+{
+	if (!WallHitData.has_value())
+		return false;
+
+	// Perform a short sweep to check if we're still near the wall
+	const float TraceDistance = 2.0f; // Adjust this value based on your needs
+	FHitResult Hit;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(GetOwner());
+    
+	// Trace from our current location towards the wall
+	const FVector TraceStart = UpdatedComponent->GetComponentLocation();
+	const FVector TraceEnd = TraceStart - WallHitData->Hit.ImpactNormal * TraceDistance;
+    
+	bool bHasHit = GetWorld()->SweepSingleByChannel(
+		Hit,
+		TraceStart,
+		TraceEnd,
+		UpdatedComponent->GetComponentQuat(),
+		ECC_Pawn, // Use appropriate channel
+		CharacterOwner->GetCapsuleComponent()->GetCollisionShape(),
+		QueryParams
+	);
+
+	// If we didn't hit anything, or hit something too far away, exit wall traction
+	if (!bHasHit)
+	{
+		return false;
+	}
+
+	// Validate the wall angle
+	const float WallAngle = FMath::RadiansToDegrees(
+		FMath::Acos(FVector::DotProduct(Hit.ImpactNormal, -GravityDirection())));
+	const float SignedWallAngle = 90.0f - WallAngle;
+
+	return SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle;
+}
+
+
+bool UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
+{
+	WallHitData = std::nullopt;
 	
-    // const float SlideFactor = FMath::GetMappedRangeValueClamped(
-    //     FVector2D(0.0f, 90.0f),
-    //     FVector2D(0.1f, 1.0f),
-    //     WallAngle
-    // );
-    //
-    // // Apply gravity-based sliding
-    // FVector GravityDir = FVector::DownVector;
-    // const FVector WallRight = FVector::CrossProduct(UpdatedComponent->GetUpVector(), -GravityDir).GetSafeNormal();
-    // const FVector WallDown = FVector::CrossProduct(WallRight, UpdatedComponent->GetUpVector()).GetSafeNormal();
-    //
-    // // Calculate sliding velocity
-    // FVector SlideVelocity = WallDown * GetGravityZ() * SlideFactor * deltaTime;
-    //
-    // // Preserve horizontal momentum when initially attaching to wall
-    // if (!bWallTractionInitiated)
-    // {
-    //     // Project current velocity onto the wall plane
-    //     const FVector WallNormal = UpdatedComponent->GetUpVector();
-    //     const FVector VelocityOnWall = FVector::VectorPlaneProject(Velocity, WallNormal);
-    //     
-    //     // Blend between current velocity and slide velocity
-    //     const float MomentumRetention = 0.8f; // Adjust this value to control how much momentum is preserved
-    //     Velocity = VelocityOnWall * MomentumRetention + SlideVelocity;
-    //     
-    //     bWallTractionInitiated = true;
-    // }
-    // else
-    // {
-    //     // Regular wall sliding
-    //     Velocity = SlideVelocity;
-    // }
-    //
-    // // Apply movement
-    // FVector Adjusted = Velocity * deltaTime;
-    // SafeMoveUpdatedComponent(Adjusted, UpdatedComponent->GetComponentQuat(), true, PrevHit);
-    //
-    // // Handle collision during movement
-    // if (PrevHit.Time < 1.f)
-    // {
-    //     HandleImpact(PrevHit, deltaTime, Adjusted);
-    //     SlideAlongSurface(Adjusted, (1.f - PrevHit.Time), PrevHit.Normal, PrevHit, true);
-    // }
+	if (IsFalling())
+	{
+		const float WallAngle = FMath::RadiansToDegrees(
+		FMath::Acos(FVector::DotProduct(Hit.ImpactNormal, -GravityDirection())));
+		const float SignedWallAngle = 90.0f - WallAngle;
+		SHMOVIN_DEBUG_FMT("Signed Wall Angle: %f", SignedWallAngle);
+	
+		if (SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle)
+		{
+			WallHitData = {.Hit = Hit, .WallAngle = SignedWallAngle};
+		}
+	}
+	
+	return WallHitData.has_value();
+}
+
+FVector UShmovementComponent::GravityDirection() const
+{
+	return CharacterOwner->GetGravityDirection();
 }
 
 void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
                                         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	// TODO: On hit, update a cache of data, including the hit result, and the wall angle. Maybe UpdateWallCache(Hit) and return false if CanGainWallTraction(Hit) is false.
-	if (CanGainWallTraction(Hit))
+	if (UpdateWallHitData(Hit))
 	{
-		InitWallTraction(Hit.ImpactNormal);
+		InitWallTraction();
 	}
-	PrevHit = Hit;
 }
 
-bool UShmovementComponent::CanGainWallTraction(const FHitResult& Hit) const
+void UShmovementComponent::InitWallTraction()
 {
-	if (!IsFalling())
-	{
-		return false;
-	}
-
-	const float WallAngle = FMath::RadiansToDegrees(
-		FMath::Acos(FVector::DotProduct(Hit.ImpactNormal, FVector::UpVector)));
-	const float SignedWallAngle = 90.0f - WallAngle;
-	SHMOVIN_DEBUG_FMT("Wall Angle: %f", WallAngle);
-	SHMOVIN_DEBUG_FMT("Signed Wall Angle: %f", SignedWallAngle);
+	assert(WallHitData.has_value());
 	
-	return SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle;
-}
-
-void UShmovementComponent::InitWallTraction(const FVector& WallNormal)
-{
 	bWallTractionInitiated = false;
 	
 	SetMovementMode(MOVE_Custom, CMOVE_Walltraction);
 
 	// Calculate rotation
-	const double RightProjWallNormal = FVector::DotProduct(CharacterOwner->GetActorRightVector(), WallNormal);
+	const double RightProjWallNormal = FVector::DotProduct(CharacterOwner->GetActorRightVector(), WallHitData->Hit.ImpactNormal);
 	const auto WallSide = RightProjWallNormal > 0.0 ? EWallSide::Right : EWallSide::Left;
-	const FVector Y = WallSide == EWallSide::Right? WallNormal : -WallNormal;
+	const FVector Y = (WallSide == EWallSide::Right? 1 : -1) * WallHitData->Hit.ImpactNormal;
 	const FVector X = FVector::CrossProduct(Y, CharacterOwner->GetActorUpVector()).GetSafeNormal();
 	const auto Rotation = FRotationMatrix::MakeFromXY(X, Y).Rotator();
 
