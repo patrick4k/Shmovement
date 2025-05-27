@@ -74,7 +74,13 @@ protected: // PROPERTIES
 	float RequiredSlideAngle = 10.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float SlideFrictionDeceleration = 100.0f;
+	float SlideFrictionDeceleration = 200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float StopSlidingVelocity = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float SlideGravityAcceleration = 980.0f;
 
 private:
 	bool bWallTractionInitiated = false;
@@ -104,7 +110,7 @@ public: // FUNCTIONS
 
 	void InitSlide();
 	bool PhysSlide(float deltaTime, int32 Iterations);
-	bool GetSlopeHitBelow();
+	bool UpdateSlopeHitData();
 
 public: // OVERRIDES
 	void BeginPlay() override;

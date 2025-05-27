@@ -215,9 +215,18 @@ FVector UShmovementComponent::GravityDirection() const
 void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
                                         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+	if (MovementMode == MOVE_Custom)
+	{
+		return;
+	}
+	
 	if (UpdateWallHitData(Hit))
 	{
 		InitWallTraction();
+	}
+	else if (bWantsToCrouch && UpdateSlopeHitData())
+	{
+		InitSlide();
 	}
 }
 
@@ -274,7 +283,7 @@ void UShmovementComponent::BeginCrouch()
 	SHMOVIN_DEBUG_LOG("Crouching");
 	bWantsToCrouch = true;
 	
-	if (IsMovingOnGround() && GetSlopeHitBelow())
+	if (IsMovingOnGround() && UpdateSlopeHitData())
 	{
 		if (Velocity.Size() >= RequiredSlideVelocity
 			|| SlopeHitData->SlopeAngle >= RequiredSlideAngle)
@@ -283,6 +292,8 @@ void UShmovementComponent::BeginCrouch()
 		}
 	}
 }
+
+
 
 void UShmovementComponent::EndCrouch()
 {
@@ -297,43 +308,75 @@ void UShmovementComponent::InitSlide()
 
 bool UShmovementComponent::PhysSlide(float deltaTime, int32 Iterations)
 {
-	return false;
+	if (!bWantsToCrouch || !UpdateSlopeHitData())
+	{
+		return false;
+	}
+
+	auto PrevVelocity = Velocity;
+
+	auto VelocityAlongSlope = Velocity - (FVector::DotProduct(Velocity, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
+	auto DecelerationVelocity = -SlideFrictionDeceleration * VelocityAlongSlope.GetSafeNormal();
+	
+	// if (DecelerationVelocity.Size() < VelocityAlongSlope.Size())
+	// {
+	// 	Velocity += DecelerationVelocity * deltaTime;
+	// }
+	// else
+	// {
+	// 	Velocity -= VelocityAlongSlope;
+	// }
+
+	// if (Velocity.Size() < RequiredSlideVelocity)
+	// {
+	// 	Velocity = PrevVelocity;
+	// 	return false;
+	// }
+
+	auto GravityAccel = SlideGravityAcceleration * GravityDirection();
+	auto GravityAccelAlongSlope = GravityAccel - (FVector::DotProduct(GravityAccel, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
+	Velocity += GravityAccelAlongSlope * deltaTime;
+
+	SHMOVIN_DEBUG_VEC(Velocity);
+	
+	
+	SlideAlongSurface(Velocity * deltaTime, 1.f - Iterations * deltaTime, SlopeHitData->Hit.ImpactNormal, SlopeHitData->Hit, true);
+	
+	return true;
 }
 
-bool UShmovementComponent::GetSlopeHitBelow()
+bool UShmovementComponent::UpdateSlopeHitData()
 {
 	SlopeHitData = std::nullopt;
+
+	const FVector TraceStart = UpdatedComponent->GetComponentLocation();
+	auto Rotator = CharacterOwner->GetCapsuleComponent()->GetComponentRotation();
+	const FVector TraceEnd = TraceStart - Rotator.RotateVector(FVector{0, 0, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()});
 	
-	if (IsMovingOnGround())
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(GetOwner());
+	SlopeHitData.emplace();
+	bool bHasHit = GetWorld()->SweepSingleByChannel(
+		SlopeHitData->Hit,
+		TraceStart,
+		TraceEnd,
+		UpdatedComponent->GetComponentQuat(),
+		ECC_Pawn, // Use appropriate channel
+		CharacterOwner->GetCapsuleComponent()->GetCollisionShape(),
+		QueryParams
+	);
+
+	if (!bHasHit)
 	{
-		const FVector TraceStart = UpdatedComponent->GetComponentLocation();
-		auto Rotator = CharacterOwner->GetCapsuleComponent()->GetComponentRotation();
-		const FVector TraceEnd = TraceStart - Rotator.RotateVector(FVector{0, 0, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 2.0});
-		
-		FCollisionQueryParams QueryParams;
-		QueryParams.AddIgnoredActor(GetOwner());
-		SlopeHitData.emplace();
-		bool bHasHit = GetWorld()->SweepSingleByChannel(
-			SlopeHitData->Hit,
-			TraceStart,
-			TraceEnd,
-			UpdatedComponent->GetComponentQuat(),
-			ECC_Pawn, // Use appropriate channel
-			CharacterOwner->GetCapsuleComponent()->GetCollisionShape(),
-			QueryParams
-		);
-	
-		if (!bHasHit)
-		{
-			SlopeHitData = std::nullopt;
-		}
-		else
-		{
-			const float SlopeAngle = FMath::RadiansToDegrees(
-			FMath::Acos(FVector::DotProduct(SlopeHitData->Hit.ImpactNormal, -GravityDirection())));
-			SlopeHitData->SlopeAngle = SlopeAngle;
-		}
+		SlopeHitData = std::nullopt;
 	}
+	else
+	{
+		const float SlopeAngle = FMath::RadiansToDegrees(
+		FMath::Acos(FVector::DotProduct(SlopeHitData->Hit.ImpactNormal, -GravityDirection())));
+		SlopeHitData->SlopeAngle = SlopeAngle;
+	}
+	
 
 	return SlopeHitData.has_value();
 }
