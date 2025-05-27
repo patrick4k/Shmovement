@@ -25,6 +25,7 @@ void UShmovementComponent::BeginPlay()
 
 void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 {
+	Super::PhysCustom(deltaTime, Iterations);
 	switch (CustomMovementMode)
 	{
 	case CMOVE_Walltraction:
@@ -37,7 +38,6 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 		break;
 	}
 
-	Super::PhysCustom(deltaTime, Iterations);
 	
 }
 
@@ -61,44 +61,39 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 
 	// Get the wall normal and gravity direction
 	const FVector WallNormal = WallHitData->Hit.ImpactNormal;
-	const FVector GravDir = GravityDirection();
+	
+	constexpr float GravityAccelerationMagnitude = 980.0f;
+	const FVector GravityAcceleration = GravityDirection() * GravityAccelerationMagnitude;
+	FVector GravityAccelerationAlongWall = GravityAcceleration - (FVector::DotProduct(GravityAcceleration, WallNormal) * WallNormal);
+	FVector GravityVelocityAlongWall = GravityAccelerationAlongWall * deltaTime;
 
-	// Calculate gravity force along the wall
-	const float GravityStrength = -GetGravityZ(); // Convert to positive value
-	FVector GravityForce = GravDir * GravityStrength;
-	FVector GravityAlongWall = GravityForce - (FVector::DotProduct(GravityForce, WallNormal) * WallNormal);
-	GravityAlongWall *= WallSlidingGravityScale;
-
-	// Calculate friction force
-	// Project current velocity onto the wall plane
 	FVector VelocityAlongWall = Velocity - (FVector::DotProduct(Velocity, WallNormal) * WallNormal);
 	const float VelocityMagnitude = VelocityAlongWall.Size();
-    
-	// Only apply friction if we're moving
-	FVector FrictionForce = FVector::ZeroVector;
+	
+	FVector FrictionVelocity = FVector::ZeroVector;
 	if (!FMath::IsNearlyZero(VelocityMagnitude))
 	{
 		// Friction opposes motion
 		FVector VelocityDirection = VelocityAlongWall.GetSafeNormal();
-		// Scale friction by normal force (gravity component perpendicular to wall)
-		float NormalForce = FMath::Abs(FVector::DotProduct(GravityForce, WallNormal));
-		FrictionForce = -VelocityDirection * (NormalForce * WallSlidingFrictionCoefficient);
+		const FVector FrictionDirection = -VelocityDirection;
+
+		const FVector FrictionAcceleration = FrictionDirection * WallSlidingFrictionDeceleration;
+		const FVector FrictionVelocityChange = FrictionAcceleration * deltaTime;
+		if (FrictionVelocityChange.Size() < VelocityMagnitude)
+		{
+			Velocity += FrictionVelocityChange;
+		}
+		else
+		{
+			Velocity = FVector::ZeroVector;
+		}
 	}
-
-	// Apply the combined forces
-	auto NetForce = GravityAlongWall + FrictionForce;
-	SHMOVIN_DEBUG_VEC(GravityAlongWall);
-	SHMOVIN_DEBUG_VEC(FrictionForce);
-	SHMOVIN_DEBUG_VEC(NetForce);
-
-	// Convert forces to acceleration (F = ma, so a = F/m)
-	FVector NetAcceleration = (NetForce) / Mass;
-
-	// Apply the acceleration
-	Velocity += NetAcceleration * deltaTime;
+	
+	Velocity += GravityVelocityAlongWall;
     
 	// Perform movement using the updated velocity
 	FVector Delta = Velocity * deltaTime;
+
 	FHitResult Hit;
 	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
 

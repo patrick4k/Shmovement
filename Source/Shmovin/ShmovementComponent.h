@@ -35,7 +35,7 @@ class SHMOVIN_API UShmovementComponent : public UCharacterMovementComponent
 
 protected: // PROPERTIES
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float WallRotationDuration = 0.2f;
+	float WallRotationDuration = 0.1f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float MaxWallTractionAngle = 45.f;
@@ -50,7 +50,8 @@ protected: // PROPERTIES
 	float WallSlidingGravityScale = 0.4f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float WallSlidingFrictionCoefficient = 0.5f;
+	float WallSlidingFrictionDeceleration = 100.0f;
+
 
 
 private:
