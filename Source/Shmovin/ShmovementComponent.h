@@ -80,6 +80,6 @@ public: // OVERRIDES
 	void PhysCustom(float deltaTime, int32 Iterations) override;
 
 protected: // UTILITY FUNCTIONS
-	virtual void PhysWallTraction(float deltaTime, int32 Iterations);
+	virtual bool PhysWallTraction(float deltaTime, int32 Iterations);
 	bool IsWallTractionValid() const;
 };

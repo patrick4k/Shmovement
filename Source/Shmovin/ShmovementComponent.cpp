@@ -12,6 +12,11 @@
 
 #include "ShmovinCommon.h" 
 
+#define SWITCH_MODE(mode) do { \
+	SHMOVIN_DEBUG_LOG("Switching to mode: " TEXT(#mode));\
+		SetMovementMode(mode); \
+	} while (0)
+
 void UShmovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -23,7 +28,10 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 	switch (CustomMovementMode)
 	{
 	case CMOVE_Walltraction:
-		PhysWallTraction(deltaTime, Iterations);
+		if (!PhysWallTraction(deltaTime, Iterations))
+		{
+			SWITCH_MODE(MOVE_Falling);
+		}
 		break;
 	default:
 		break;
@@ -33,35 +41,22 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 	
 }
 
-void UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
+bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 {
 	if (deltaTime < MIN_TICK_TIME)
     {
-        return;
+        return false;
     }
 
 	if (!WallHitData.has_value() || !WallHitData->Hit.bBlockingHit)
 	{
-		return;
-	}
-	
-	// TODO: Compute sliding physics based on wall angle
-	if (deltaTime < MIN_TICK_TIME)
-	{
-		return;
-	}
-
-	if (!WallHitData.has_value())
-	{
-		SHMOVIN_DEBUG_LOG("Wall Hit Data is not valid");
-		return;
+		return false;
 	}
 
 	if (!IsWallTractionValid())
 	{
 		SHMOVIN_DEBUG_LOG("Wall Traction is not valid");
-		SetMovementMode(MOVE_Falling);
-		return;
+		return false;
 	}
 
 	// Get the wall normal and gravity direction
@@ -112,6 +107,8 @@ void UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 	{
 		SlideAlongSurface(Delta, 1.f - Hit.Time, Hit.Normal, Hit, true);
 	}
+
+	return true;
 }
 
 bool UShmovementComponent::IsWallTractionValid() const
