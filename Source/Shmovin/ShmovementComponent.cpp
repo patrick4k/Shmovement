@@ -187,7 +187,7 @@ void UShmovementComponent::InitWallTraction()
 
 	if (!ShouldRotateToWall)
 	{
-		bWallTractionInitiated = true;
+		OnWallRunInitComplete();
 		return;
 	}
 
