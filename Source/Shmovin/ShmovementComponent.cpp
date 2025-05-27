@@ -65,7 +65,10 @@ bool UShmovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 
 bool UShmovementComponent::DoWallJump(bool bReplayingMoves, float DeltaTime)
 {
-	// Compute vector by adding WallJumpAngle to the angle between WallHitData->Hit.ImpactNormal and GravityDirection
+	if (!WallHitData.has_value())
+	{
+		return false;
+	}
 	
 	const FVector RotationAxis = FVector::CrossProduct(WallHitData->Hit.ImpactNormal, GravityDirection()).GetSafeNormal();
     
@@ -75,7 +78,7 @@ bool UShmovementComponent::DoWallJump(bool bReplayingMoves, float DeltaTime)
 	// Apply the rotation to the wall normal
 	const FVector JumpDirection = Rotation.RotateVector(WallHitData->Hit.ImpactNormal);
 
-	Launch(JumpDirection * WallJumpVelocity);
+	Launch(Velocity + JumpDirection * WallJumpVelocity);
 
 	return true;
 }
