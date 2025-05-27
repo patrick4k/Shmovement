@@ -4,7 +4,6 @@
 #include "ShmovementComponent.h"
 
 #include <cassert>
-#include <format>
 #include <GameFramework/Character.h>
 #include <Components/CapsuleComponent.h>
 
@@ -37,26 +36,17 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 	default:
 		break;
 	}
-
-	
 }
 
 bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 {
-	if (deltaTime < MIN_TICK_TIME)
+	if (deltaTime < MIN_TICK_TIME
+		|| !WallHitData.has_value()
+		|| !WallHitData->Hit.bBlockingHit
+		|| !IsNextToWallWithTraction())
     {
         return false;
     }
-
-	if (!WallHitData.has_value() || !WallHitData->Hit.bBlockingHit)
-	{
-		return false;
-	}
-
-	if (!IsNextToWallWithTraction())
-	{
-		return false;
-	}
 
 	// Get the wall normal and gravity direction
 	const FVector WallNormal = WallHitData->Hit.ImpactNormal;
@@ -67,8 +57,7 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 
 	FVector VelocityAlongWall = Velocity - (FVector::DotProduct(Velocity, WallNormal) * WallNormal);
 	const float VelocityMagnitude = VelocityAlongWall.Size();
-	
-	FVector FrictionVelocity = FVector::ZeroVector;
+
 	if (!FMath::IsNearlyZero(VelocityMagnitude))
 	{
 		// Friction opposes motion
@@ -83,7 +72,7 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 		}
 		else
 		{
-			Velocity = FVector::ZeroVector;
+			Velocity -= VelocityAlongWall;
 		}
 	}
 	
@@ -109,8 +98,8 @@ bool UShmovementComponent::IsNextToWallWithTraction() const
 	if (!WallHitData.has_value())
 		return false;
 
-	// Perform a short sweep to check if we're still near the wall
-	const float TraceDistance = 2.0f; // Adjust this value based on your needs
+	// Using twice the capsule radius should be enough
+	const float TraceDistance = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 2.0;
 	FHitResult Hit;
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(GetOwner());
@@ -118,7 +107,8 @@ bool UShmovementComponent::IsNextToWallWithTraction() const
 	// Trace from our current location towards the wall
 	const FVector TraceStart = UpdatedComponent->GetComponentLocation();
 	const FVector TraceEnd = TraceStart - WallHitData->Hit.ImpactNormal * TraceDistance;
-    
+
+	// Check for a hit
 	bool bHasHit = GetWorld()->SweepSingleByChannel(
 		Hit,
 		TraceStart,
@@ -128,8 +118,7 @@ bool UShmovementComponent::IsNextToWallWithTraction() const
 		CharacterOwner->GetCapsuleComponent()->GetCollisionShape(),
 		QueryParams
 	);
-
-	// If we didn't hit anything, or hit something too far away, exit wall traction
+	
 	if (!bHasHit)
 	{
 		return false;
@@ -142,7 +131,6 @@ bool UShmovementComponent::IsNextToWallWithTraction() const
 
 	return SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle;
 }
-
 
 void UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
 {
