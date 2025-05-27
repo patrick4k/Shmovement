@@ -38,21 +38,19 @@ protected: // PROPERTIES
 	float WallRotationDuration = 0.1f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	bool ShouldRotateToWall = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float MaxWallTractionAngle = 45.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float MinWallTractionAngle = -15.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float WallSlidingFriction = 0.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float WallSlidingGravityScale = 0.4f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float WallSlidingFrictionDeceleration = 100.0f;
 
-
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float WallSlidingGravityAcceleration = 980.0f;
 
 private:
 	bool bWallTractionInitiated = false;
@@ -62,7 +60,7 @@ private:
 	/**
 	 * @brief Updates the WallHitData cache, returns true if cache is valid (i.e., if wall traction is valid)
 	 */
-	bool UpdateWallHitData(const FHitResult& Hit);
+	void UpdateWallHitData(const FHitResult& Hit);
 
 	FVector GravityDirection() const;
 
@@ -82,5 +80,5 @@ public: // OVERRIDES
 
 protected: // UTILITY FUNCTIONS
 	virtual bool PhysWallTraction(float deltaTime, int32 Iterations);
-	bool IsWallTractionValid() const;
+	bool IsNextToWallWithTraction() const;
 };

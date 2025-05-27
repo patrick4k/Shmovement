@@ -4,7 +4,6 @@
 #include "ShmovementComponent.h"
 
 #include <cassert>
-#include <format>
 #include <GameFramework/Character.h>
 #include <Components/CapsuleComponent.h>
 
@@ -37,40 +36,28 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 	default:
 		break;
 	}
-
-	
 }
 
 bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 {
-	if (deltaTime < MIN_TICK_TIME)
+	if (deltaTime < MIN_TICK_TIME
+		|| !WallHitData.has_value()
+		|| !WallHitData->Hit.bBlockingHit
+		|| !IsNextToWallWithTraction())
     {
         return false;
     }
 
-	if (!WallHitData.has_value() || !WallHitData->Hit.bBlockingHit)
-	{
-		return false;
-	}
-
-	if (!IsWallTractionValid())
-	{
-		SHMOVIN_DEBUG_LOG("Wall Traction is not valid");
-		return false;
-	}
-
 	// Get the wall normal and gravity direction
 	const FVector WallNormal = WallHitData->Hit.ImpactNormal;
 	
-	constexpr float GravityAccelerationMagnitude = 980.0f;
-	const FVector GravityAcceleration = GravityDirection() * GravityAccelerationMagnitude;
+	const FVector GravityAcceleration = GravityDirection() * WallSlidingGravityAcceleration;
 	FVector GravityAccelerationAlongWall = GravityAcceleration - (FVector::DotProduct(GravityAcceleration, WallNormal) * WallNormal);
 	FVector GravityVelocityAlongWall = GravityAccelerationAlongWall * deltaTime;
 
 	FVector VelocityAlongWall = Velocity - (FVector::DotProduct(Velocity, WallNormal) * WallNormal);
 	const float VelocityMagnitude = VelocityAlongWall.Size();
-	
-	FVector FrictionVelocity = FVector::ZeroVector;
+
 	if (!FMath::IsNearlyZero(VelocityMagnitude))
 	{
 		// Friction opposes motion
@@ -85,7 +72,7 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 		}
 		else
 		{
-			Velocity = FVector::ZeroVector;
+			Velocity -= VelocityAlongWall;
 		}
 	}
 	
@@ -106,13 +93,13 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 	return true;
 }
 
-bool UShmovementComponent::IsWallTractionValid() const
+bool UShmovementComponent::IsNextToWallWithTraction() const
 {
 	if (!WallHitData.has_value())
 		return false;
 
-	// Perform a short sweep to check if we're still near the wall
-	const float TraceDistance = 2.0f; // Adjust this value based on your needs
+	// Using twice the capsule radius should be enough
+	const float TraceDistance = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 2.0;
 	FHitResult Hit;
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(GetOwner());
@@ -120,7 +107,8 @@ bool UShmovementComponent::IsWallTractionValid() const
 	// Trace from our current location towards the wall
 	const FVector TraceStart = UpdatedComponent->GetComponentLocation();
 	const FVector TraceEnd = TraceStart - WallHitData->Hit.ImpactNormal * TraceDistance;
-    
+
+	// Check for a hit
 	bool bHasHit = GetWorld()->SweepSingleByChannel(
 		Hit,
 		TraceStart,
@@ -130,8 +118,7 @@ bool UShmovementComponent::IsWallTractionValid() const
 		CharacterOwner->GetCapsuleComponent()->GetCollisionShape(),
 		QueryParams
 	);
-
-	// If we didn't hit anything, or hit something too far away, exit wall traction
+	
 	if (!bHasHit)
 	{
 		return false;
@@ -145,8 +132,7 @@ bool UShmovementComponent::IsWallTractionValid() const
 	return SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle;
 }
 
-
-bool UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
+void UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
 {
 	WallHitData = std::nullopt;
 	
@@ -162,8 +148,6 @@ bool UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
 			WallHitData = {.Hit = Hit, .WallAngle = SignedWallAngle};
 		}
 	}
-	
-	return WallHitData.has_value();
 }
 
 FVector UShmovementComponent::GravityDirection() const
@@ -174,7 +158,8 @@ FVector UShmovementComponent::GravityDirection() const
 void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
                                         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	if (UpdateWallHitData(Hit))
+	UpdateWallHitData(Hit);
+	if (WallHitData.has_value())
 	{
 		InitWallTraction();
 	}
@@ -187,6 +172,12 @@ void UShmovementComponent::InitWallTraction()
 	bWallTractionInitiated = false;
 	
 	SetMovementMode(MOVE_Custom, CMOVE_Walltraction);
+
+	if (!ShouldRotateToWall)
+	{
+		OnWallRunInitComplete();
+		return;
+	}
 
 	// Calculate rotation
 	const double RightProjWallNormal = FVector::DotProduct(CharacterOwner->GetActorRightVector(), WallHitData->Hit.ImpactNormal);
