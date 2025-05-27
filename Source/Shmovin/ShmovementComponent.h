@@ -52,6 +52,12 @@ protected: // PROPERTIES
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float WallSlidingGravityAcceleration = 980.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float WallJumpAngle = 45.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float WallJumpVelocity = 1000.0f;
+
 private:
 	bool bWallTractionInitiated = false;
 	EShmovementModes CurrentShmovementMode = EShmovementModes::CMOVE_None;
@@ -77,6 +83,11 @@ public: // OVERRIDES
 	void BeginPlay() override;
 
 	void PhysCustom(float deltaTime, int32 Iterations) override;
+
+	bool CanAttemptJump() const override;
+
+	bool DoJump(bool bReplayingMoves, float DeltaTime) override;
+	bool DoWallJump(bool bReplayingMoves, float DeltaTime);
 
 protected: // UTILITY FUNCTIONS
 	virtual bool PhysWallTraction(float deltaTime, int32 Iterations);

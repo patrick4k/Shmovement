@@ -38,6 +38,48 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 	}
 }
 
+bool UShmovementComponent::CanAttemptJump() const
+{
+	if (MovementMode == MOVE_Custom && CustomMovementMode == CMOVE_Walltraction)
+	{
+		return true;
+	}
+	return Super::CanAttemptJump();
+}
+
+bool UShmovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
+{
+	if (MovementMode != MOVE_Custom)
+	{
+		return Super::DoJump(bReplayingMoves, DeltaTime);
+	}
+	
+	switch (CustomMovementMode)
+	{
+	case CMOVE_Walltraction:
+		return DoWallJump(bReplayingMoves, DeltaTime);
+	default:
+		return false;
+	}
+}
+
+bool UShmovementComponent::DoWallJump(bool bReplayingMoves, float DeltaTime)
+{
+	// Compute vector by adding WallJumpAngle to the angle between WallHitData->Hit.ImpactNormal and GravityDirection
+	
+	const FVector RotationAxis = FVector::CrossProduct(WallHitData->Hit.ImpactNormal, GravityDirection()).GetSafeNormal();
+    
+	// Create a rotation around this axis by WallJumpAngle degrees
+	const FQuat Rotation = FQuat(RotationAxis, FMath::DegreesToRadians(-WallJumpAngle));
+    
+	// Apply the rotation to the wall normal
+	const FVector JumpDirection = Rotation.RotateVector(WallHitData->Hit.ImpactNormal);
+
+	Launch(JumpDirection * WallJumpVelocity);
+
+	return true;
+}
+
 bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 {
 	if (deltaTime < MIN_TICK_TIME
