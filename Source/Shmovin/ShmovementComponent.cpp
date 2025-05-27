@@ -283,7 +283,7 @@ void UShmovementComponent::BeginCrouch()
 	SHMOVIN_DEBUG_LOG("Crouching");
 	bWantsToCrouch = true;
 	
-	if (IsMovingOnGround() && UpdateSlopeHitData())
+	if (UpdateSlopeHitData())
 	{
 		if (Velocity.Size() >= RequiredSlideVelocity
 			|| SlopeHitData->SlopeAngle >= RequiredSlideAngle)
@@ -314,31 +314,41 @@ bool UShmovementComponent::PhysSlide(float deltaTime, int32 Iterations)
 	}
 
 	auto PrevVelocity = Velocity;
-
-	auto VelocityAlongSlope = Velocity - (FVector::DotProduct(Velocity, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
-	auto DecelerationVelocity = -SlideFrictionDeceleration * VelocityAlongSlope.GetSafeNormal();
 	
-	// if (DecelerationVelocity.Size() < VelocityAlongSlope.Size())
-	// {
-	// 	Velocity += DecelerationVelocity * deltaTime;
-	// }
-	// else
-	// {
-	// 	Velocity -= VelocityAlongSlope;
-	// }
+	auto VelocityAlongSlope = Velocity - (FVector::DotProduct(Velocity, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
 
-	// if (Velocity.Size() < RequiredSlideVelocity)
-	// {
-	// 	Velocity = PrevVelocity;
-	// 	return false;
-	// }
+	auto FrictionDeceleration = -SlideFrictionDeceleration * FMath::Cos(FMath::DegreesToRadians(SlopeHitData->SlopeAngle)) * VelocityAlongSlope.GetSafeNormal();
+	
+	if (FrictionDeceleration.Size() * deltaTime < VelocityAlongSlope.Size())
+	{
+		Velocity += FrictionDeceleration * deltaTime;
+	}
 
 	auto GravityAccel = SlideGravityAcceleration * GravityDirection();
 	auto GravityAccelAlongSlope = GravityAccel - (FVector::DotProduct(GravityAccel, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
 	Velocity += GravityAccelAlongSlope * deltaTime;
 
-	SHMOVIN_DEBUG_VEC(Velocity);
-	
+	if (Velocity.Size() < StopSlidingVelocity)
+	{
+		if (SlideTimer)
+		{
+			*SlideTimer += deltaTime;
+
+			if (*SlideTimer >= ExitSlideFromRestTime)
+			{
+				Velocity = PrevVelocity;
+				return false;
+			}
+		}
+		else
+		{
+			SlideTimer = 0;
+		}
+	}
+	else
+	{
+		SlideTimer = std::nullopt;
+	}
 	
 	SlideAlongSurface(Velocity * deltaTime, 1.f - Iterations * deltaTime, SlopeHitData->Hit.ImpactNormal, SlopeHitData->Hit, true);
 	
@@ -349,7 +359,7 @@ bool UShmovementComponent::UpdateSlopeHitData()
 {
 	SlopeHitData = std::nullopt;
 
-	const FVector TraceStart = UpdatedComponent->GetComponentLocation();
+	const FVector TraceStart = CharacterOwner->GetCapsuleComponent()->GetComponentLocation();
 	auto Rotator = CharacterOwner->GetCapsuleComponent()->GetComponentRotation();
 	const FVector TraceEnd = TraceStart - Rotator.RotateVector(FVector{0, 0, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()});
 	
@@ -360,7 +370,7 @@ bool UShmovementComponent::UpdateSlopeHitData()
 		SlopeHitData->Hit,
 		TraceStart,
 		TraceEnd,
-		UpdatedComponent->GetComponentQuat(),
+		CharacterOwner->GetCapsuleComponent()->GetComponentQuat(),
 		ECC_Pawn, // Use appropriate channel
 		CharacterOwner->GetCapsuleComponent()->GetCollisionShape(),
 		QueryParams

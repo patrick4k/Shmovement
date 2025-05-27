@@ -71,16 +71,19 @@ protected: // PROPERTIES
 	float RequiredSlideVelocity = 750.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float RequiredSlideAngle = 10.0f;
+	float RequiredSlideAngle = 20.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float SlideFrictionDeceleration = 200.0f;
+	float SlideFrictionDeceleration = 500.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float StopSlidingVelocity = 100.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float SlideGravityAcceleration = 980.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float ExitSlideFromRestTime = 0.5f;
 
 private:
 	bool bWallTractionInitiated = false;
@@ -94,6 +97,8 @@ private:
 	bool UpdateWallHitData(const FHitResult& Hit);
 
 	FVector GravityDirection() const;
+
+	std::optional<float> SlideTimer;
 
 public: // FUNCTIONS
 	UFUNCTION()
