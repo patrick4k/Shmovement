@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "InputAction.h"
+#include "EnhancedInputComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "ShmovementComponent.generated.h" 
 
@@ -11,6 +13,7 @@ enum EShmovementModes : int
 {
 	CMOVE_None UMETA(DisplayName = "None"),
 	CMOVE_Walltraction UMETA(DisplayName = "Wall Jump"),
+	CMOVE_Slide UMETA(DisplayName = "Slide"),
 	CMOVE_MAX UMETA(Hidden)
 };
 
@@ -26,6 +29,12 @@ struct WallHitData
 {
 	FHitResult Hit;
 	float WallAngle; // 0 for wall parallel to character gravity
+};
+
+struct SlopeHitData
+{
+	FHitResult Hit;
+	float SlopeAngle;
 };
 
 UCLASS()
@@ -58,17 +67,38 @@ protected: // PROPERTIES
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float WallJumpVelocity = 1000.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float RequiredSlideVelocity = 750.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float RequiredSlideAngle = 20.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float SlideFrictionDeceleration = 500.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float StopSlidingVelocity = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float SlideGravityAcceleration = 980.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float ExitSlideFromRestTime = 0.5f;
+
 private:
 	bool bWallTractionInitiated = false;
 	EShmovementModes CurrentShmovementMode = EShmovementModes::CMOVE_None;
 	std::optional<WallHitData> WallHitData;
+	std::optional<SlopeHitData> SlopeHitData;
 
 	/**
 	 * @brief Updates the WallHitData cache, returns true if cache is valid (i.e., if wall traction is valid)
 	 */
-	void UpdateWallHitData(const FHitResult& Hit);
+	bool UpdateWallHitData(const FHitResult& Hit);
 
 	FVector GravityDirection() const;
+
+	std::optional<float> SlideTimer;
 
 public: // FUNCTIONS
 	UFUNCTION()
@@ -78,6 +108,14 @@ public: // FUNCTIONS
 
 	UFUNCTION()
 	void OnWallRunInitComplete();
+
+	void RegisterCrouchInput(UEnhancedInputComponent* EnhancedInputComponent, UInputAction* CrouchAction);
+	void BeginCrouch();
+	void EndCrouch();
+
+	void InitSlide();
+	bool PhysSlide(float deltaTime, int32 Iterations);
+	bool UpdateSlopeHitData();
 
 public: // OVERRIDES
 	void BeginPlay() override;

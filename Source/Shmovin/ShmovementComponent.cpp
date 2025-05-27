@@ -16,6 +16,11 @@
 		SetMovementMode(mode); \
 	} while (0)
 
+#define SWITCH_MODE_CUSTOM(mode) do { \
+	SHMOVIN_DEBUG_LOG("Switching to mode: " TEXT(#mode));\
+		SetMovementMode(MOVE_Custom, mode); \
+	} while (0)
+
 void UShmovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -33,6 +38,11 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 			SWITCH_MODE(MOVE_Falling);
 		}
 		break;
+	case CMOVE_Slide:
+		if (!PhysSlide(deltaTime, Iterations))
+		{
+			SWITCH_MODE(MOVE_Walking);
+		}
 	default:
 		break;
 	}
@@ -177,7 +187,7 @@ bool UShmovementComponent::IsNextToWallWithTraction() const
 	return SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle;
 }
 
-void UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
+bool UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
 {
 	WallHitData = std::nullopt;
 	
@@ -193,6 +203,8 @@ void UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
 			WallHitData = {.Hit = Hit, .WallAngle = SignedWallAngle};
 		}
 	}
+
+	return WallHitData.has_value();
 }
 
 FVector UShmovementComponent::GravityDirection() const
@@ -203,10 +215,18 @@ FVector UShmovementComponent::GravityDirection() const
 void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
                                         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	UpdateWallHitData(Hit);
-	if (WallHitData.has_value())
+	if (MovementMode == MOVE_Custom)
+	{
+		return;
+	}
+	
+	if (UpdateWallHitData(Hit))
 	{
 		InitWallTraction();
+	}
+	else if (bWantsToCrouch && UpdateSlopeHitData())
+	{
+		InitSlide();
 	}
 }
 
@@ -216,7 +236,7 @@ void UShmovementComponent::InitWallTraction()
 	
 	bWallTractionInitiated = false;
 	
-	SetMovementMode(MOVE_Custom, CMOVE_Walltraction);
+	SWITCH_MODE_CUSTOM(CMOVE_Walltraction);
 
 	if (!ShouldRotateToWall)
 	{
@@ -250,4 +270,123 @@ void UShmovementComponent::OnWallRunInitComplete()
 {
 	SHMOVIN_DEBUG_LOG("Wall Traction Initiated");
 	bWallTractionInitiated = true;
+}
+
+void UShmovementComponent::RegisterCrouchInput(UEnhancedInputComponent* EnhancedInputComponent, UInputAction* CrouchAction)
+{
+	EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &UShmovementComponent::BeginCrouch);
+	EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &UShmovementComponent::EndCrouch);	
+}
+
+void UShmovementComponent::BeginCrouch()
+{
+	SHMOVIN_DEBUG_LOG("Crouching");
+	bWantsToCrouch = true;
+	
+	if (UpdateSlopeHitData())
+	{
+		if (Velocity.Size() >= RequiredSlideVelocity
+			|| SlopeHitData->SlopeAngle >= RequiredSlideAngle)
+		{
+			InitSlide();
+		}
+	}
+}
+
+
+
+void UShmovementComponent::EndCrouch()
+{
+	SHMOVIN_DEBUG_LOG("End Crouching");
+	bWantsToCrouch = false;
+}
+
+void UShmovementComponent::InitSlide()
+{
+	SWITCH_MODE_CUSTOM(CMOVE_Slide);
+}
+
+bool UShmovementComponent::PhysSlide(float deltaTime, int32 Iterations)
+{
+	if (!bWantsToCrouch || !UpdateSlopeHitData())
+	{
+		return false;
+	}
+
+	auto PrevVelocity = Velocity;
+	
+	auto VelocityAlongSlope = Velocity - (FVector::DotProduct(Velocity, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
+
+	auto FrictionDeceleration = -SlideFrictionDeceleration * FMath::Cos(FMath::DegreesToRadians(SlopeHitData->SlopeAngle)) * VelocityAlongSlope.GetSafeNormal();
+	
+	if (FrictionDeceleration.Size() * deltaTime < VelocityAlongSlope.Size())
+	{
+		Velocity += FrictionDeceleration * deltaTime;
+	}
+
+	auto GravityAccel = SlideGravityAcceleration * GravityDirection();
+	auto GravityAccelAlongSlope = GravityAccel - (FVector::DotProduct(GravityAccel, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
+	Velocity += GravityAccelAlongSlope * deltaTime;
+
+	if (Velocity.Size() < StopSlidingVelocity)
+	{
+		if (SlideTimer)
+		{
+			*SlideTimer += deltaTime;
+
+			if (*SlideTimer >= ExitSlideFromRestTime)
+			{
+				Velocity = PrevVelocity;
+				return false;
+			}
+		}
+		else
+		{
+			SlideTimer = 0;
+		}
+	}
+	else
+	{
+		SlideTimer = std::nullopt;
+	}
+	
+	SlideAlongSurface(Velocity * deltaTime, 1.f - Iterations * deltaTime, SlopeHitData->Hit.ImpactNormal, SlopeHitData->Hit, true);
+	
+	return true;
+}
+
+bool UShmovementComponent::UpdateSlopeHitData()
+{
+	SlopeHitData = std::nullopt;
+
+	const FVector TraceStart = CharacterOwner->GetCapsuleComponent()->GetComponentLocation();
+	const FVector TraceEnd = TraceStart +
+		FVector{0, 0, -CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight_WithoutHemisphere()};
+	
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(GetOwner());
+	SlopeHitData.emplace();
+	bool bHasHit = GetWorld()->SweepSingleByChannel(
+		SlopeHitData->Hit,
+		TraceStart,
+		TraceEnd,
+		CharacterOwner->GetCapsuleComponent()->GetComponentQuat(),
+		ECC_Pawn, // Use appropriate channel
+		CharacterOwner->GetCapsuleComponent()->GetCollisionShape(),
+		QueryParams
+	);
+
+	if (!bHasHit)
+	{
+		SlopeHitData = std::nullopt;
+	}
+	else
+	{
+		const float SlopeAngle = FMath::RadiansToDegrees(
+		FMath::Acos(FVector::DotProduct(SlopeHitData->Hit.ImpactNormal, -GravityDirection())));
+		SlopeHitData->SlopeAngle = SlopeAngle;
+	}
+	
+
+	return SlopeHitData.has_value();
 }
