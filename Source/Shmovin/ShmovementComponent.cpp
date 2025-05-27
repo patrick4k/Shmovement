@@ -24,7 +24,7 @@
 void UShmovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	// CharacterOwner->GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &UShmovementComponent::OnCapsuleHit);
+	CharacterOwner->GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &UShmovementComponent::OnCapsuleHit);
 }
 
 void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
@@ -35,6 +35,7 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 	case CMOVE_Walltraction:
 		if (!PhysWallTraction(deltaTime, Iterations))
 		{
+			LastWallHitData = std::nullopt;
 			SWITCH_MODE(MOVE_Falling);
 		}
 		break;
@@ -67,8 +68,7 @@ bool UShmovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 	switch (CustomMovementMode)
 	{
 	case CMOVE_Walltraction:
-		// return DoWallJump(bReplayingMoves, DeltaTime);
-		return false;
+		return DoWallJump(bReplayingMoves, DeltaTime);
 	case CMOVE_Slide:
 		return Super::DoJump(bReplayingMoves, DeltaTime);
 	default:
@@ -98,6 +98,8 @@ bool UShmovementComponent::DoWallJump(bool bReplayingMoves, float DeltaTime)
 
 void UShmovementComponent::AddInputVector(FVector WorldVector, bool bForce)
 {
+	Super::AddInputVector(WorldVector, bForce);
+	
 	if (LastInputVector.has_value() && !WorldVector.IsNearlyZero())
 	{
 		*LastInputVector += WorldVector;
@@ -106,15 +108,12 @@ void UShmovementComponent::AddInputVector(FVector WorldVector, bool bForce)
 	{
 		LastInputVector = WorldVector;
 	}
-	
-	if (IsFalling() && ((LastWallHitData = TryComputeWallHitData(WorldVector))))
+
+	if (IsFalling() && LastWallHitData &&
+		(WorldVector.Dot(-LastWallHitData->Hit.ImpactNormal) > InputDotWallNormalWallTractionRequirement))
 	{
 		SHMOVIN_DEBUG_LOG("Hit wall with movement input!");
 		InitWallTraction();
-	}
-	else
-	{
-		Super::AddInputVector(WorldVector, bForce);
 	}
 }
 
@@ -132,25 +131,33 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 		|| LastInputVector == std::nullopt
 		|| LastWallHitData == std::nullopt)
     {
+		SHMOVIN_DEBUG_LOG("Exiting because deltaTime < MIN_TICK_TIME || LastInputVector == std::nullopt || LastWallHitData == std::nullopt");
         return false;
     }
 
 	static uint64_t Count = 0;
 	SHMOVIN_DEBUG_FMT("Count %llu", Count++);
+	SHMOVIN_DEBUG_VEC(-LastWallHitData->Hit.ImpactNormal);
 	auto ToWall = -LastWallHitData->Hit.ImpactNormal;
 	float InputDotWall = ToWall.Dot(LastInputVector.value().GetSafeNormal());
 	SHMOVIN_DEBUG_FMT("InputDotWall: %f", InputDotWall);
 	if (InputDotWall <= 0)
 	{
+		SHMOVIN_DEBUG_LOG("Exiting because input dot wall is <= 0");
 		return false;
 	}
-	
-	LastWallHitData = TryComputeWallHitData(LastInputVector.value());
 
-	if (LastWallHitData == std::nullopt)
+	// We shouldn't use Hit.ImpactNormal because it is not the normal of the wall but the direction the LastWallHitData was computed for
+	if (!TryComputeWallHitData(-LastWallHitData->Hit.ImpactNormal))
 	{
+		SHMOVIN_DEBUG_LOG("Exiting because TryComputeWallHitData failed");
 		return false;
 	}
+
+	// if (LastWallHitData == std::nullopt)
+	// {
+	// 	return false;
+	// }
 
 	// Get the wall normal and gravity direction
 	const FVector WallNormal = LastWallHitData->Hit.ImpactNormal;
@@ -220,7 +227,7 @@ std::optional<WallHitData> UShmovementComponent::TryComputeWallHitData(const FVe
 		QueryParams
 	);
 	
-	if (!bHasHit || Hit.ImpactNormal.Dot(Direction) > 0.f)
+	if (!bHasHit)
 	{
 		return std::nullopt;
 	}
@@ -246,7 +253,6 @@ bool UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
 		const float WallAngle = FMath::RadiansToDegrees(
 		FMath::Acos(FVector::DotProduct(Hit.ImpactNormal, -GravityDirection())));
 		const float SignedWallAngle = 90.0f - WallAngle;
-		SHMOVIN_DEBUG_FMT("Signed Wall Angle: %f", SignedWallAngle);
 	
 		if (SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle)
 		{
@@ -265,15 +271,15 @@ FVector UShmovementComponent::GravityDirection() const
 void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
                                         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	if (MovementMode == MOVE_Custom)
-	{
-		return;
-	}
+	// if (MovementMode == MOVE_Custom)
+	// {
+	// 	return;
+	// }
 	
 	if (UpdateWallHitData(Hit))
 	{
 		// TODO: Either use input vector to verify character wants slide on wall or use another method related to input vector to init wall traction
-		InitWallTraction();
+		// InitWallTraction();
 	}
 	else if (bWantsToCrouch && UpdateSlopeHitData())
 	{

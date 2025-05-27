@@ -85,6 +85,9 @@ protected: // PROPERTIES
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float ExitSlideFromRestTime = 0.5f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float InputDotWallNormalWallTractionRequirement = 0.75f;
+
 private:
 	bool bWallTractionInitiated = false;
 	EShmovementModes CurrentShmovementMode = EShmovementModes::CMOVE_None;
