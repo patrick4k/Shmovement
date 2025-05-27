@@ -11,6 +11,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "ShmovementComponent.h"
+#include "ShmovinCommon.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -87,6 +88,12 @@ void AShmovinCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AShmovinCharacter::Look);
+
+		// Crouching
+		if (UShmovementComponent* ShmovementComponent = Cast<UShmovementComponent>(GetCharacterMovement()))
+		{
+			ShmovementComponent->RegisterCrouchInput(EnhancedInputComponent, CrouchAction);
+		}
 	}
 	else
 	{

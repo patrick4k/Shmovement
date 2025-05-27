@@ -16,6 +16,11 @@
 		SetMovementMode(mode); \
 	} while (0)
 
+#define SWITCH_MODE_CUSTOM(mode) do { \
+	SHMOVIN_DEBUG_LOG("Switching to mode: " TEXT(#mode));\
+		SetMovementMode(MOVE_Custom, mode); \
+	} while (0)
+
 void UShmovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -33,6 +38,11 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 			SWITCH_MODE(MOVE_Falling);
 		}
 		break;
+	case CMOVE_Slide:
+		if (!PhysSlide(deltaTime, Iterations))
+		{
+			SWITCH_MODE(MOVE_Walking);
+		}
 	default:
 		break;
 	}
@@ -177,7 +187,7 @@ bool UShmovementComponent::IsNextToWallWithTraction() const
 	return SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle;
 }
 
-void UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
+bool UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
 {
 	WallHitData = std::nullopt;
 	
@@ -193,6 +203,8 @@ void UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
 			WallHitData = {.Hit = Hit, .WallAngle = SignedWallAngle};
 		}
 	}
+
+	return WallHitData.has_value();
 }
 
 FVector UShmovementComponent::GravityDirection() const
@@ -203,8 +215,7 @@ FVector UShmovementComponent::GravityDirection() const
 void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
                                         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	UpdateWallHitData(Hit);
-	if (WallHitData.has_value())
+	if (UpdateWallHitData(Hit))
 	{
 		InitWallTraction();
 	}
@@ -216,7 +227,7 @@ void UShmovementComponent::InitWallTraction()
 	
 	bWallTractionInitiated = false;
 	
-	SetMovementMode(MOVE_Custom, CMOVE_Walltraction);
+	SWITCH_MODE_CUSTOM(CMOVE_Walltraction);
 
 	if (!ShouldRotateToWall)
 	{
@@ -250,4 +261,79 @@ void UShmovementComponent::OnWallRunInitComplete()
 {
 	SHMOVIN_DEBUG_LOG("Wall Traction Initiated");
 	bWallTractionInitiated = true;
+}
+
+void UShmovementComponent::RegisterCrouchInput(UEnhancedInputComponent* EnhancedInputComponent, UInputAction* CrouchAction)
+{
+	EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &UShmovementComponent::BeginCrouch);
+	EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &UShmovementComponent::EndCrouch);	
+}
+
+void UShmovementComponent::BeginCrouch()
+{
+	SHMOVIN_DEBUG_LOG("Crouching");
+	bWantsToCrouch = true;
+	
+	if (IsMovingOnGround() && GetSlopeHitBelow())
+	{
+		if (Velocity.Size() >= RequiredSlideVelocity
+			|| SlopeHitData->SlopeAngle >= RequiredSlideAngle)
+		{
+			InitSlide();
+		}
+	}
+}
+
+void UShmovementComponent::EndCrouch()
+{
+	SHMOVIN_DEBUG_LOG("End Crouching");
+	bWantsToCrouch = false;
+}
+
+void UShmovementComponent::InitSlide()
+{
+	SWITCH_MODE_CUSTOM(CMOVE_Slide);
+}
+
+bool UShmovementComponent::PhysSlide(float deltaTime, int32 Iterations)
+{
+	return false;
+}
+
+bool UShmovementComponent::GetSlopeHitBelow()
+{
+	SlopeHitData = std::nullopt;
+	
+	if (IsMovingOnGround())
+	{
+		const FVector TraceStart = UpdatedComponent->GetComponentLocation();
+		auto Rotator = CharacterOwner->GetCapsuleComponent()->GetComponentRotation();
+		const FVector TraceEnd = TraceStart - Rotator.RotateVector(FVector{0, 0, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 2.0});
+		
+		FCollisionQueryParams QueryParams;
+		QueryParams.AddIgnoredActor(GetOwner());
+		SlopeHitData.emplace();
+		bool bHasHit = GetWorld()->SweepSingleByChannel(
+			SlopeHitData->Hit,
+			TraceStart,
+			TraceEnd,
+			UpdatedComponent->GetComponentQuat(),
+			ECC_Pawn, // Use appropriate channel
+			CharacterOwner->GetCapsuleComponent()->GetCollisionShape(),
+			QueryParams
+		);
+	
+		if (!bHasHit)
+		{
+			SlopeHitData = std::nullopt;
+		}
+		else
+		{
+			const float SlopeAngle = FMath::RadiansToDegrees(
+			FMath::Acos(FVector::DotProduct(SlopeHitData->Hit.ImpactNormal, -GravityDirection())));
+			SlopeHitData->SlopeAngle = SlopeAngle;
+		}
+	}
+
+	return SlopeHitData.has_value();
 }
