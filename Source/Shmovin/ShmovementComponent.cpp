@@ -360,8 +360,8 @@ bool UShmovementComponent::UpdateSlopeHitData()
 	SlopeHitData = std::nullopt;
 
 	const FVector TraceStart = CharacterOwner->GetCapsuleComponent()->GetComponentLocation();
-	auto Rotator = CharacterOwner->GetCapsuleComponent()->GetComponentRotation();
-	const FVector TraceEnd = TraceStart - Rotator.RotateVector(FVector{0, 0, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()});
+	const FVector TraceEnd = TraceStart +
+		FVector{0, 0, -CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight_WithoutHemisphere()};
 	
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(GetOwner());
