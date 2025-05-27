@@ -88,7 +88,7 @@ protected: // PROPERTIES
 private:
 	bool bWallTractionInitiated = false;
 	EShmovementModes CurrentShmovementMode = EShmovementModes::CMOVE_None;
-	std::optional<WallHitData> WallHitData;
+	std::optional<WallHitData> LastWallHitData;
 	std::optional<SlopeHitData> SlopeHitData;
 
 	/**
@@ -100,6 +100,8 @@ private:
 
 	std::optional<float> SlideTimer;
 
+	std::optional<FVector> LastInputVector;
+
 public: // FUNCTIONS
 	UFUNCTION()
 	void OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
@@ -107,7 +109,7 @@ public: // FUNCTIONS
 	void InitWallTraction();
 
 	UFUNCTION()
-	void OnWallRunInitComplete();
+	void OnWallTractionInitComplete();
 
 	void RegisterCrouchInput(UEnhancedInputComponent* EnhancedInputComponent, UInputAction* CrouchAction);
 	void BeginCrouch();
@@ -127,7 +129,11 @@ public: // OVERRIDES
 	bool DoJump(bool bReplayingMoves, float DeltaTime) override;
 	bool DoWallJump(bool bReplayingMoves, float DeltaTime);
 
+	void AddInputVector(FVector WorldVector, bool bForce = false) override;
+	
+	void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
 protected: // UTILITY FUNCTIONS
 	virtual bool PhysWallTraction(float deltaTime, int32 Iterations);
-	bool IsNextToWallWithTraction() const;
+	std::optional<::WallHitData> TryComputeWallHitData(const FVector& Direction) const;
 };
