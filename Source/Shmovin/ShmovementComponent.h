@@ -56,10 +56,10 @@ protected: // PROPERTIES
 	float MinWallTractionAngle = -15.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float WallSlidingFrictionDeceleration = 100.0f;
+	float WallSlidingFrictionDeceleration = 200.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float WallSlidingGravityAcceleration = 980.0f;
+	float WallSlidingGravityAcceleration = 350.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float WallJumpAngle = 45.0f;
@@ -86,7 +86,10 @@ protected: // PROPERTIES
 	float ExitSlideFromRestTime = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float InputDotWallNormalWallTractionRequirement = 0.75f;
+	float WallTractionInitInputWallAngleDeg = 45;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float WallTractionMaintainInputWallAngleDeg = 90;
 
 private:
 	bool bWallTractionInitiated = false;

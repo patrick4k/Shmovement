@@ -58,6 +58,7 @@ bool UShmovementComponent::CanAttemptJump() const
 	return Super::CanAttemptJump();
 }
 
+// TODO: Allow wall jumping based on input vector and wall detection
 bool UShmovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 {
 	if (MovementMode != MOVE_Custom)
@@ -108,12 +109,14 @@ void UShmovementComponent::AddInputVector(FVector WorldVector, bool bForce)
 	{
 		LastInputVector = WorldVector;
 	}
-
-	if (IsFalling() && LastWallHitData &&
-		(WorldVector.Dot(-LastWallHitData->Hit.ImpactNormal) > InputDotWallNormalWallTractionRequirement))
+	
+	if (IsFalling() && LastWallHitData)
 	{
-		SHMOVIN_DEBUG_LOG("Hit wall with movement input!");
-		InitWallTraction();
+		auto InputWallAngle = FMath::Acos(WorldVector.Dot(-LastWallHitData->Hit.ImpactNormal));
+		if (InputWallAngle <= FMath::DegreesToRadians(WallTractionInitInputWallAngleDeg))
+		{
+			InitWallTraction();
+		}
 	}
 }
 
@@ -134,20 +137,15 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 		SHMOVIN_DEBUG_LOG("Exiting because deltaTime < MIN_TICK_TIME || LastInputVector == std::nullopt || LastWallHitData == std::nullopt");
         return false;
     }
-
-	static uint64_t Count = 0;
-	SHMOVIN_DEBUG_FMT("Count %llu", Count++);
-	SHMOVIN_DEBUG_VEC(-LastWallHitData->Hit.ImpactNormal);
+	
 	auto ToWall = -LastWallHitData->Hit.ImpactNormal;
-	float InputDotWall = ToWall.Dot(LastInputVector.value().GetSafeNormal());
-	SHMOVIN_DEBUG_FMT("InputDotWall: %f", InputDotWall);
-	if (InputDotWall <= 0)
+	float InputWallAngle = FMath::Acos(ToWall.Dot(LastInputVector.value().GetSafeNormal()));
+	if (InputWallAngle > FMath::DegreesToRadians(WallTractionMaintainInputWallAngleDeg))
 	{
-		SHMOVIN_DEBUG_LOG("Exiting because input dot wall is <= 0");
+		SHMOVIN_DEBUG_FMT("Exiting because input dot wall is > %f", WallTractionMaintainInputWallAngleDeg);
 		return false;
 	}
 
-	// We shouldn't use Hit.ImpactNormal because it is not the normal of the wall but the direction the LastWallHitData was computed for
 	if (!TryComputeWallHitData(-LastWallHitData->Hit.ImpactNormal))
 	{
 		SHMOVIN_DEBUG_LOG("Exiting because TryComputeWallHitData failed");
@@ -162,7 +160,7 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 	// Get the wall normal and gravity direction
 	const FVector WallNormal = LastWallHitData->Hit.ImpactNormal;
 	
-	const FVector GravityAcceleration = GravityDirection() * WallSlidingGravityAcceleration;
+	const FVector GravityAcceleration = GravityDirection() * WallSlidingGravityAcceleration * GravityScale;
 	FVector GravityAccelerationAlongWall = GravityAcceleration - (FVector::DotProduct(GravityAcceleration, WallNormal) * WallNormal);
 	FVector GravityVelocityAlongWall = GravityAccelerationAlongWall * deltaTime;
 
@@ -379,7 +377,7 @@ bool UShmovementComponent::PhysSlide(float deltaTime, int32 Iterations)
 		Velocity += FrictionDeceleration * deltaTime;
 	}
 
-	auto GravityAccel = SlideGravityAcceleration * GravityDirection();
+	auto GravityAccel = GravityScale * SlideGravityAcceleration * GravityDirection();
 	auto GravityAccelAlongSlope = GravityAccel - (FVector::DotProduct(GravityAccel, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
 	Velocity += GravityAccelAlongSlope * deltaTime;
 
