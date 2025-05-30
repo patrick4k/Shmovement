@@ -35,6 +35,7 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 	case CMOVE_Walltraction:
 		if (!PhysWallTraction(deltaTime, Iterations))
 		{
+			LastWallHitData = std::nullopt;
 			SWITCH_MODE(MOVE_Falling);
 		}
 		break;
@@ -50,63 +51,110 @@ void UShmovementComponent::PhysCustom(float deltaTime, int32 Iterations)
 
 bool UShmovementComponent::CanAttemptJump() const
 {
-	if (MovementMode == MOVE_Custom && CustomMovementMode == CMOVE_Walltraction)
+	if (MovementMode == MOVE_Custom)
 	{
-		return true;
+		return CustomMovementMode == CMOVE_Walltraction || CustomMovementMode == CMOVE_Slide;
 	}
 	return Super::CanAttemptJump();
 }
 
+// TODO: Allow wall jumping based on input vector and wall detection
 bool UShmovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 {
-	if (MovementMode != MOVE_Custom)
+	if (MovementMode == MOVE_Custom)
 	{
-		return Super::DoJump(bReplayingMoves, DeltaTime);
+		switch (CustomMovementMode)
+		{
+		case CMOVE_Walltraction:
+			if (LastWallHitData)
+			{
+				return DoWallJump(LastWallHitData->Hit.ImpactNormal);
+			}
+			break;
+
+		case CMOVE_Slide:
+			break;
+
+		default:
+			break;
+		}
 	}
-	
-	switch (CustomMovementMode)
+
+	if (LastInputVector)
 	{
-	case CMOVE_Walltraction:
-		return DoWallJump(bReplayingMoves, DeltaTime);
-	default:
-		return false;
+		if (auto NewWallHit = TryComputeWallHitData(-LastInputVector->GetSafeNormal()))
+		{
+			return DoWallJump(NewWallHit->Hit.ImpactNormal);
+		}
+	}
+
+	return Super::DoJump(bReplayingMoves, DeltaTime);
+	
+}
+
+bool UShmovementComponent::DoWallJump(const FVector& WallNormal)
+{
+	const FVector RotationAxis = FVector::CrossProduct(WallNormal, GravityDirection()).GetSafeNormal();
+	const FQuat Rotation = FQuat(RotationAxis, FMath::DegreesToRadians(-WallJumpAngle));
+	const FVector JumpDirection = Rotation.RotateVector(WallNormal);
+
+	Velocity -= Velocity.Dot(JumpDirection) * JumpDirection;
+
+	Launch(Velocity + JumpDirection * WallJumpVelocity);
+	return true;
+}
+
+void UShmovementComponent::AddInputVector(FVector WorldVector, bool bForce)
+{
+	Super::AddInputVector(WorldVector, bForce);
+	
+	if (LastInputVector.has_value() && !WorldVector.IsNearlyZero())
+	{
+		*LastInputVector += WorldVector;
+	}
+	else if (!WorldVector.IsNearlyZero())
+	{
+		LastInputVector = WorldVector;
 	}
 }
 
-bool UShmovementComponent::DoWallJump(bool bReplayingMoves, float DeltaTime)
+void UShmovementComponent::TickComponent(float DeltaTime, enum ELevelTick TickType,
+	FActorComponentTickFunction* ThisTickFunction)
 {
-	if (!WallHitData.has_value())
-	{
-		return false;
-	}
-	
-	const FVector RotationAxis = FVector::CrossProduct(WallHitData->Hit.ImpactNormal, GravityDirection()).GetSafeNormal();
-    
-	// Create a rotation around this axis by WallJumpAngle degrees
-	const FQuat Rotation = FQuat(RotationAxis, FMath::DegreesToRadians(-WallJumpAngle));
-    
-	// Apply the rotation to the wall normal
-	const FVector JumpDirection = Rotation.RotateVector(WallHitData->Hit.ImpactNormal);
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	Launch(Velocity + JumpDirection * WallJumpVelocity);
-
-	return true;
+	LastInputVector = std::nullopt;
 }
 
 bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 {
 	if (deltaTime < MIN_TICK_TIME
-		|| !WallHitData.has_value()
-		|| !WallHitData->Hit.bBlockingHit
-		|| !IsNextToWallWithTraction())
+		|| LastInputVector == std::nullopt
+		|| LastWallHitData == std::nullopt)
     {
+		SHMOVIN_DEBUG_LOG("Exiting because deltaTime < MIN_TICK_TIME || LastInputVector == std::nullopt || LastWallHitData == std::nullopt");
         return false;
     }
 
-	// Get the wall normal and gravity direction
-	const FVector WallNormal = WallHitData->Hit.ImpactNormal;
+	LastWallHitData = TryComputeWallHitData(-LastWallHitData->Hit.ImpactNormal);
+
+	if (!LastWallHitData)
+	{
+		SHMOVIN_DEBUG_LOG("Exiting because TryComputeWallHitData failed");
+		return false;
+	}
 	
-	const FVector GravityAcceleration = GravityDirection() * WallSlidingGravityAcceleration;
+	auto ToWall = -LastWallHitData->Hit.ImpactNormal;
+	float InputWallAngle = FMath::Acos(ToWall.Dot(LastInputVector.value().GetSafeNormal()));
+	if (InputWallAngle > FMath::DegreesToRadians(WallTractionMaintainInputWallAngleDeg))
+	{
+		SHMOVIN_DEBUG_FMT("Exiting because input dot wall is > %f", WallTractionMaintainInputWallAngleDeg);
+		return false;
+	}
+	
+	const FVector WallNormal = LastWallHitData->Hit.ImpactNormal;
+	
+	const FVector GravityAcceleration = GravityDirection() * WallSlidingGravityAcceleration * GravityScale;
 	FVector GravityAccelerationAlongWall = GravityAcceleration - (FVector::DotProduct(GravityAcceleration, WallNormal) * WallNormal);
 	FVector GravityVelocityAlongWall = GravityAccelerationAlongWall * deltaTime;
 
@@ -115,7 +163,6 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 
 	if (!FMath::IsNearlyZero(VelocityMagnitude))
 	{
-		// Friction opposes motion
 		FVector VelocityDirection = VelocityAlongWall.GetSafeNormal();
 		const FVector FrictionDirection = -VelocityDirection;
 
@@ -133,13 +180,11 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 	
 	Velocity += GravityVelocityAlongWall;
     
-	// Perform movement using the updated velocity
 	FVector Delta = Velocity * deltaTime;
 
 	FHitResult Hit;
 	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
 
-	// Handle collision by sliding along the surface
 	if (Hit.bBlockingHit)
 	{
 		SlideAlongSurface(Delta, 1.f - Hit.Time, Hit.Normal, Hit, true);
@@ -148,20 +193,17 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 	return true;
 }
 
-bool UShmovementComponent::IsNextToWallWithTraction() const
+std::optional<WallHitData> UShmovementComponent::TryComputeWallHitData(const FVector& Direction) const
 {
-	if (!WallHitData.has_value())
-		return false;
-
 	// Using twice the capsule radius should be enough
-	const float TraceDistance = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 2.0;
+	const float TraceDistance = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
 	FHitResult Hit;
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(GetOwner());
     
 	// Trace from our current location towards the wall
 	const FVector TraceStart = UpdatedComponent->GetComponentLocation();
-	const FVector TraceEnd = TraceStart - WallHitData->Hit.ImpactNormal * TraceDistance;
+	const FVector TraceEnd = TraceStart + Direction.GetSafeNormal() * TraceDistance;
 
 	// Check for a hit
 	bool bHasHit = GetWorld()->SweepSingleByChannel(
@@ -176,7 +218,7 @@ bool UShmovementComponent::IsNextToWallWithTraction() const
 	
 	if (!bHasHit)
 	{
-		return false;
+		return std::nullopt;
 	}
 
 	// Validate the wall angle
@@ -184,27 +226,30 @@ bool UShmovementComponent::IsNextToWallWithTraction() const
 		FMath::Acos(FVector::DotProduct(Hit.ImpactNormal, -GravityDirection())));
 	const float SignedWallAngle = 90.0f - WallAngle;
 
-	return SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle;
+	if (SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle)
+	{
+		return WallHitData{.Hit = Hit, .WallAngle = SignedWallAngle};
+	}
+	return std::nullopt;
 }
 
 bool UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
 {
-	WallHitData = std::nullopt;
+	LastWallHitData = std::nullopt;
 	
 	if (IsFalling())
 	{
 		const float WallAngle = FMath::RadiansToDegrees(
 		FMath::Acos(FVector::DotProduct(Hit.ImpactNormal, -GravityDirection())));
 		const float SignedWallAngle = 90.0f - WallAngle;
-		SHMOVIN_DEBUG_FMT("Signed Wall Angle: %f", SignedWallAngle);
 	
 		if (SignedWallAngle >= MinWallTractionAngle && SignedWallAngle <= MaxWallTractionAngle)
 		{
-			WallHitData = {.Hit = Hit, .WallAngle = SignedWallAngle};
+			LastWallHitData = {.Hit = Hit, .WallAngle = SignedWallAngle};
 		}
 	}
 
-	return WallHitData.has_value();
+	return LastWallHitData.has_value();
 }
 
 FVector UShmovementComponent::GravityDirection() const
@@ -220,9 +265,13 @@ void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActo
 		return;
 	}
 	
-	if (UpdateWallHitData(Hit))
+	if (UpdateWallHitData(Hit) && LastInputVector && IsFalling())
 	{
-		InitWallTraction();
+		auto InputWallAngle = FMath::Acos(LastInputVector->Dot(-LastWallHitData->Hit.ImpactNormal));
+		if (InputWallAngle <= FMath::DegreesToRadians(WallTractionInitInputWallAngleDeg))
+		{
+			InitWallTraction();
+		}
 	}
 	else if (bWantsToCrouch && UpdateSlopeHitData())
 	{
@@ -232,7 +281,7 @@ void UShmovementComponent::OnCapsuleHit(UPrimitiveComponent* HitComponent, AActo
 
 void UShmovementComponent::InitWallTraction()
 {
-	assert(WallHitData.has_value());
+	assert(LastWallHitData.has_value());
 	
 	bWallTractionInitiated = false;
 	
@@ -240,14 +289,14 @@ void UShmovementComponent::InitWallTraction()
 
 	if (!ShouldRotateToWall)
 	{
-		OnWallRunInitComplete();
+		OnWallTractionInitComplete();
 		return;
 	}
 
 	// Calculate rotation
-	const double RightProjWallNormal = FVector::DotProduct(CharacterOwner->GetActorRightVector(), WallHitData->Hit.ImpactNormal);
+	const double RightProjWallNormal = FVector::DotProduct(CharacterOwner->GetActorRightVector(), LastWallHitData->Hit.ImpactNormal);
 	const auto WallSide = RightProjWallNormal > 0.0 ? EWallSide::Right : EWallSide::Left;
-	const FVector Y = (WallSide == EWallSide::Right? 1 : -1) * WallHitData->Hit.ImpactNormal;
+	const FVector Y = (WallSide == EWallSide::Right? 1 : -1) * LastWallHitData->Hit.ImpactNormal;
 	const FVector X = FVector::CrossProduct(Y, CharacterOwner->GetActorUpVector()).GetSafeNormal();
 	const auto Rotation = FRotationMatrix::MakeFromXY(X, Y).Rotator();
 
@@ -266,7 +315,7 @@ void UShmovementComponent::InitWallTraction()
 	);
 }
 
-void UShmovementComponent::OnWallRunInitComplete()
+void UShmovementComponent::OnWallTractionInitComplete()
 {
 	SHMOVIN_DEBUG_LOG("Wall Traction Initiated");
 	bWallTractionInitiated = true;
@@ -292,8 +341,6 @@ void UShmovementComponent::BeginCrouch()
 		}
 	}
 }
-
-
 
 void UShmovementComponent::EndCrouch()
 {
@@ -324,7 +371,7 @@ bool UShmovementComponent::PhysSlide(float deltaTime, int32 Iterations)
 		Velocity += FrictionDeceleration * deltaTime;
 	}
 
-	auto GravityAccel = SlideGravityAcceleration * GravityDirection();
+	auto GravityAccel = GravityScale * SlideGravityAcceleration * GravityDirection();
 	auto GravityAccelAlongSlope = GravityAccel - (FVector::DotProduct(GravityAccel, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
 	Velocity += GravityAccelAlongSlope * deltaTime;
 
@@ -387,6 +434,5 @@ bool UShmovementComponent::UpdateSlopeHitData()
 		SlopeHitData->SlopeAngle = SlopeAngle;
 	}
 	
-
 	return SlopeHitData.has_value();
 }

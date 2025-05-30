@@ -56,13 +56,13 @@ protected: // PROPERTIES
 	float MinWallTractionAngle = -15.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float WallSlidingFrictionDeceleration = 100.0f;
+	float WallSlidingFrictionDeceleration = 200.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float WallSlidingGravityAcceleration = 980.0f;
+	float WallSlidingGravityAcceleration = 350.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float WallJumpAngle = 45.0f;
+	float WallJumpAngle = 60.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float WallJumpVelocity = 1000.0f;
@@ -85,10 +85,16 @@ protected: // PROPERTIES
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float ExitSlideFromRestTime = 0.5f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float WallTractionInitInputWallAngleDeg = 45;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float WallTractionMaintainInputWallAngleDeg = 90;
+
 private:
 	bool bWallTractionInitiated = false;
 	EShmovementModes CurrentShmovementMode = EShmovementModes::CMOVE_None;
-	std::optional<WallHitData> WallHitData;
+	std::optional<WallHitData> LastWallHitData;
 	std::optional<SlopeHitData> SlopeHitData;
 
 	/**
@@ -100,6 +106,8 @@ private:
 
 	std::optional<float> SlideTimer;
 
+	std::optional<FVector> LastInputVector;
+
 public: // FUNCTIONS
 	UFUNCTION()
 	void OnCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
@@ -107,7 +115,7 @@ public: // FUNCTIONS
 	void InitWallTraction();
 
 	UFUNCTION()
-	void OnWallRunInitComplete();
+	void OnWallTractionInitComplete();
 
 	void RegisterCrouchInput(UEnhancedInputComponent* EnhancedInputComponent, UInputAction* CrouchAction);
 	void BeginCrouch();
@@ -125,9 +133,13 @@ public: // OVERRIDES
 	bool CanAttemptJump() const override;
 
 	bool DoJump(bool bReplayingMoves, float DeltaTime) override;
-	bool DoWallJump(bool bReplayingMoves, float DeltaTime);
+	bool DoWallJump(const FVector& WallNormal);
+
+	void AddInputVector(FVector WorldVector, bool bForce = false) override;
+	
+	void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 protected: // UTILITY FUNCTIONS
 	virtual bool PhysWallTraction(float deltaTime, int32 Iterations);
-	bool IsNextToWallWithTraction() const;
+	std::optional<::WallHitData> TryComputeWallHitData(const FVector& Direction) const;
 };
