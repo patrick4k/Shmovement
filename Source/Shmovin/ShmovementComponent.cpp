@@ -70,7 +70,7 @@ bool UShmovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 			{
 				return DoWallJump(LastWallHitData->Hit.ImpactNormal);
 			}
-			return false;
+			break;
 
 		case CMOVE_Slide:
 			break;
@@ -80,11 +80,9 @@ bool UShmovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 		}
 	}
 
-	if (LastWallHitData)
+	if (LastInputVector)
 	{
-		// TODO: Should UpdateWallHitData() do a TryComputeWallHitData()?
-		// TODO: Sometimes wall jump fails when character is close to a wall but not yet hit
-		if (auto NewWallHit = TryComputeWallHitData(-LastWallHitData->Hit.ImpactNormal))
+		if (auto NewWallHit = TryComputeWallHitData(-LastInputVector->GetSafeNormal()))
 		{
 			return DoWallJump(NewWallHit->Hit.ImpactNormal);
 		}
@@ -99,6 +97,8 @@ bool UShmovementComponent::DoWallJump(const FVector& WallNormal)
 	const FVector RotationAxis = FVector::CrossProduct(WallNormal, GravityDirection()).GetSafeNormal();
 	const FQuat Rotation = FQuat(RotationAxis, FMath::DegreesToRadians(-WallJumpAngle));
 	const FVector JumpDirection = Rotation.RotateVector(WallNormal);
+
+	Velocity -= Velocity.Dot(JumpDirection) * JumpDirection;
 
 	Launch(Velocity + JumpDirection * WallJumpVelocity);
 	return true;
@@ -135,18 +135,20 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 		SHMOVIN_DEBUG_LOG("Exiting because deltaTime < MIN_TICK_TIME || LastInputVector == std::nullopt || LastWallHitData == std::nullopt");
         return false;
     }
+
+	LastWallHitData = TryComputeWallHitData(-LastWallHitData->Hit.ImpactNormal);
+
+	if (!LastWallHitData)
+	{
+		SHMOVIN_DEBUG_LOG("Exiting because TryComputeWallHitData failed");
+		return false;
+	}
 	
 	auto ToWall = -LastWallHitData->Hit.ImpactNormal;
 	float InputWallAngle = FMath::Acos(ToWall.Dot(LastInputVector.value().GetSafeNormal()));
 	if (InputWallAngle > FMath::DegreesToRadians(WallTractionMaintainInputWallAngleDeg))
 	{
 		SHMOVIN_DEBUG_FMT("Exiting because input dot wall is > %f", WallTractionMaintainInputWallAngleDeg);
-		return false;
-	}
-
-	if (!TryComputeWallHitData(-LastWallHitData->Hit.ImpactNormal))
-	{
-		SHMOVIN_DEBUG_LOG("Exiting because TryComputeWallHitData failed");
 		return false;
 	}
 	

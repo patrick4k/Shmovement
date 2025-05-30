@@ -62,7 +62,7 @@ protected: // PROPERTIES
 	float WallSlidingGravityAcceleration = 350.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float WallJumpAngle = 45.0f;
+	float WallJumpAngle = 60.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float WallJumpVelocity = 1000.0f;
