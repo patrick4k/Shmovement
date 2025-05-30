@@ -125,6 +125,9 @@ public: // FUNCTIONS
 	bool PhysSlide(float deltaTime, int32 Iterations);
 	bool UpdateSlopeHitData();
 
+	UFUNCTION(BlueprintCallable, Category = "Shmovin")
+	bool IsSliding() const;
+
 public: // OVERRIDES
 	void BeginPlay() override;
 

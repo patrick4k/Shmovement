@@ -58,7 +58,6 @@ bool UShmovementComponent::CanAttemptJump() const
 	return Super::CanAttemptJump();
 }
 
-// TODO: Allow wall jumping based on input vector and wall detection
 bool UShmovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 {
 	if (MovementMode == MOVE_Custom)
@@ -435,4 +434,9 @@ bool UShmovementComponent::UpdateSlopeHitData()
 	}
 	
 	return SlopeHitData.has_value();
+}
+
+bool UShmovementComponent::IsSliding() const
+{
+	return MovementMode == MOVE_Custom && CustomMovementMode == CMOVE_Slide;
 }
