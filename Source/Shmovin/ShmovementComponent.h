@@ -133,7 +133,7 @@ public: // OVERRIDES
 	bool CanAttemptJump() const override;
 
 	bool DoJump(bool bReplayingMoves, float DeltaTime) override;
-	bool DoWallJump(bool bReplayingMoves, float DeltaTime);
+	bool DoWallJump(const FVector& WallNormal);
 
 	void AddInputVector(FVector WorldVector, bool bForce = false) override;
 	
