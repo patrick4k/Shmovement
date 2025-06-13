@@ -179,16 +179,8 @@ bool UShmovementComponent::PhysWallTraction(float deltaTime, int32 Iterations)
 	}
 	
 	Velocity += GravityVelocityAlongWall;
-    
-	FVector Delta = Velocity * deltaTime;
 
-	FHitResult Hit;
-	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
-
-	if (Hit.bBlockingHit)
-	{
-		SlideAlongSurface(Delta, 1.f - Hit.Time, Hit.Normal, Hit, true);
-	}
+	MoveWithVelocity(deltaTime, Iterations);
 
 	return true;
 }
@@ -231,6 +223,16 @@ std::optional<WallHitData> UShmovementComponent::TryComputeWallHitData(const FVe
 		return WallHitData{.Hit = Hit, .WallAngle = SignedWallAngle};
 	}
 	return std::nullopt;
+}
+
+void UShmovementComponent::MoveWithVelocity(float deltaTime, int32 Iterations, bool ForceSlide)
+{
+	FHitResult Hit;
+	SafeMoveUpdatedComponent(Velocity * deltaTime, UpdatedComponent->GetComponentQuat(), true, Hit);
+	if (Hit.bBlockingHit)
+	{
+		SlideAlongSurface(Velocity * deltaTime, 1.f - Iterations * deltaTime, SlopeHitData->Hit.ImpactNormal, SlopeHitData->Hit, true);
+	}
 }
 
 bool UShmovementComponent::UpdateWallHitData(const FHitResult& Hit)
@@ -362,17 +364,18 @@ bool UShmovementComponent::PhysSlide(float deltaTime, int32 Iterations)
 
 	auto PrevVelocity = Velocity;
 	
-	auto VelocityAlongSlope = Velocity - (FVector::DotProduct(Velocity, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
+	auto VelocityAlongSlope = Velocity - FVector::DotProduct(Velocity, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal;
 
 	auto FrictionDeceleration = -SlideFrictionDeceleration * FMath::Cos(FMath::DegreesToRadians(SlopeHitData->SlopeAngle)) * VelocityAlongSlope.GetSafeNormal();
+	auto FrictionVelocityLoss = FrictionDeceleration * deltaTime;
 	
-	if (FrictionDeceleration.Size() * deltaTime < VelocityAlongSlope.Size())
+	if (FrictionVelocityLoss.Size() < VelocityAlongSlope.Size())
 	{
-		Velocity += FrictionDeceleration * deltaTime;
+		Velocity += FrictionVelocityLoss;
 	}
 
 	auto GravityAccel = GravityScale * SlideGravityAcceleration * GravityDirection();
-	auto GravityAccelAlongSlope = GravityAccel - (FVector::DotProduct(GravityAccel, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal);
+	auto GravityAccelAlongSlope = GravityAccel - FVector::DotProduct(GravityAccel, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal;
 	Velocity += GravityAccelAlongSlope * deltaTime;
 
 	if (Velocity.Size() < StopSlidingVelocity)

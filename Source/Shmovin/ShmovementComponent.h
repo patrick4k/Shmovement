@@ -142,4 +142,5 @@ public: // OVERRIDES
 protected: // UTILITY FUNCTIONS
 	virtual bool PhysWallTraction(float deltaTime, int32 Iterations);
 	std::optional<::WallHitData> TryComputeWallHitData(const FVector& Direction) const;
+	void MoveWithVelocity(float deltaTime, int32 Iterations, bool ForceSlide = false);
 };
