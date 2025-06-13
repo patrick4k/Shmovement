@@ -353,6 +353,7 @@ void UShmovementComponent::EndCrouch()
 void UShmovementComponent::InitSlide()
 {
 	SWITCH_MODE_CUSTOM(CMOVE_Slide);
+	Velocity *= SlideInitBoostFactor;
 }
 
 bool UShmovementComponent::PhysSlide(float deltaTime, int32 Iterations)
@@ -373,12 +374,16 @@ bool UShmovementComponent::PhysSlide(float deltaTime, int32 Iterations)
 	{
 		Velocity += FrictionVelocityLoss;
 	}
+	else
+	{
+		Velocity -= VelocityAlongSlope;
+	}
 
 	auto GravityAccel = GravityScale * SlideGravityAcceleration * GravityDirection();
 	auto GravityAccelAlongSlope = GravityAccel - FVector::DotProduct(GravityAccel, SlopeHitData->Hit.ImpactNormal) * SlopeHitData->Hit.ImpactNormal;
 	Velocity += GravityAccelAlongSlope * deltaTime;
-
-	if (Velocity.Size() < StopSlidingVelocity)
+	
+	if (VelocityAlongSlope.Size() < StopSlidingVelocity)
 	{
 		if (SlideTimer)
 		{

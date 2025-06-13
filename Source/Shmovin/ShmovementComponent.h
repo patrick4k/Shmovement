@@ -68,7 +68,7 @@ protected: // PROPERTIES
 	float WallJumpVelocity = 1000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
-	float RequiredSlideVelocity = 750.0f;
+	float RequiredSlideVelocity = 500.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float RequiredSlideAngle = 20.0f;
@@ -81,6 +81,9 @@ protected: // PROPERTIES
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float SlideGravityAcceleration = 980.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
+	float SlideInitBoostFactor = 1.25f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shmovin", meta = (AllowPrivateAccess = "true"))
 	float ExitSlideFromRestTime = 0.5f;
